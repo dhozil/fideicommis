@@ -40,7 +40,7 @@ changed. The honest version of a review is the record of what you got wrong.
 | 3 | A receipt could belong to a different transaction | [details](#a-receipt-can-be-for-the-wrong-transaction) |
 | 4 | The money was not accounted for, only counted | [details](#every-attogen-is-accounted-for) |
 | 5 | A charter could deadlock its own amendment | [details](#a-charter-can-deadlock-its-own-amendment) |
-| 6 | The factory could not deploy anything at all | [details](#the-factory-could-not-create-anything) |
+| 6 | A fixed cycle count let a dormancy check pass for the wrong reason | [details](#the-funding-loop-drained-to-nothing-and-revived) |
 
 Two more, which are about the tooling rather than the contract: a driver drove a
 hardcoded number of cycles and so never reached `DORMANT`
@@ -135,21 +135,18 @@ When it reaches zero the fideicommis enters `DORMANT` and stops acting. Any
 ```
 contracts/
   fideicommis.py              the trust itself: charter, treasury, runway, autonomous cycle
-  fideicommis_factory.py      provisions the template, registers the trusts it creates
-  storage_semantics.py  fixture contract that pins GenVM storage behaviour
+    storage_semantics.py  fixture contract that pins GenVM storage behaviour
 scripts/
   studionet.cjs                  shared Studionet driver: pacing, execution checks, deploy, write
   run_mission_loop.cjs           funding, burn, keeper reimbursement, dormancy, revival
   run_proposal_flow.cjs         rejection path, then the full money path
-  run_factory_check.cjs         template provisioning, trust creation, cross-contract calls
 web/                           the audit reader: Next.js, optional wallet, holds no key
-deploy/deployScript.ts         one command: factory, template, a trust, then read it back
+deploy/deployScript.ts         one command: deploy a trust, then read it back
 tools/run_glsim_windows.py     the Windows glsim workarounds
   run_fideicommis.cjs         the three core claims: acts by itself, pays a non member, amends itself
 tests/
   test_fideicommis.py         direct-mode tests, millisecond feedback
-  test_fideicommis_factory.py factory guards, template provisioning, access control
-  test_no_float.py                invariant: no float division, no float in consensus
+    test_no_float.py                invariant: no float division, no float in consensus
   test_storage_semantics.py       regression tests for the storage rules we rely on
   integration/
     test_consensus.py       the same flows through a real validator committee
@@ -166,7 +163,7 @@ for f in scripts/*.cjs; do node --check "$f"; done
 cd web && npm ci && npm run build && npx tsc --noEmit
 ```
 
-Expect `133 passed, 10 skipped`. The skips are the integration tests, which skip
+Expect `121 passed, 8 skipped`. The skips are the integration tests, which skip
 themselves when no GenLayer node is reachable. `tests/test_no_float.py` is the
 file to read first if the review is about VM stability.
 
@@ -260,9 +257,8 @@ pip install -r requirements.txt
 
 # static checks
 genvm-lint check contracts/fideicommis.py
-genvm-lint check contracts/fideicommis_factory.py
 
-# 133 tests, no network, no model calls, ~12 seconds
+# 121 tests, no network, no model calls, ~11 seconds
 python -m pytest -v
 
 # the VM stability invariant on its own
@@ -550,7 +546,6 @@ genlayer account send <keeper> 0.5gen
 cp <exported-keeper-key> scripts/orgkeeper.key
 node scripts/run_mission_loop.cjs --deploy
 node scripts/run_proposal_flow.cjs
-node scripts/run_factory_check.cjs
 node scripts/run_fideicommis.cjs --new
 ```
 
@@ -773,7 +768,7 @@ are fixed above.
 | Criticism | Status here |
 | --- | --- |
 | "replace float divisions `/` with `//` in `_avg` and approval logic" | No `/` exists. `test_no_float.py` inventories every division and fails on a float one. |
-| "repin the dependency to a resolvable version" | Pinned to `py-genlayer:1jb45aa8yn…`; the factory rejects a template without that header. |
+| "repin the dependency to a resolvable version" | Pinned to `py-genlayer:1jb45aa8yn.` on every contract file. |
 | "correlate each result to the transaction just submitted" | **Real.** Fixed: the receipt hash is now verified. |
 | "validators only check that reasoning mentions an evidence ID; that unchecked reasoning steers the outcome" | **Real.** Model prose can no longer reach the charter. |
 | "bind the exact payout percentage in the settlement nondeterministic path" | Already bound: `compare()` agrees on the score in 20-wide buckets and `payout = (budget * score) // 100` derives from it. |
@@ -1014,70 +1009,6 @@ against a charter that did not exist yet was removed. And the one path that
 would have skipped all of that — the autonomous `ADAPT` writing the model's own
 prose into the body — is now closed; see
 [the section above](#model-prose-can-no-longer-become-the-constitution).
-
-## The factory could not create anything
-
-`fideicommis_factory.py` was written the way the docs' factory example reads its
-template: `open("/contract/fideicommis.py")`. Deployed for real on Studionet it fails
-every time:
-
-```
-[EXPECTED] organization source not found at /contract/fideicommis.py
-```
-
-A single-file deployment carries no sibling files into the sandbox, so the path
-does not exist. The factory was unusable and had zero tests.
-
-The template is now **provisioned through calldata** instead:
-
-```python
-provision_template(code)   # deployer only, once, then frozen
-deploy_org(name, mission, charter, evidence_urls, operator)
-```
-
-`provision_template` rejects an empty string, anything without
-`class Fideicommis(gl.Contract)`, and anything without a pinned `Depends`
-header, and it refuses a second call so a live factory's children all come from
-the same immutable code. Verified on Studionet:
-
-```
-deploy_org before provisioning  -> refused: "no template provisioned"
-provision_template(63235 bytes) -> provisioned
-provision twice                -> refused: "already provisioned and this factory is frozen"
-deploy_org x N                 -> 7 registered children, all template_bytes 63235
-cross-contract view            -> status ACTIVE, full summary read from the child
-poke                           -> advance_cycle accepted on the child
-```
-
-Two operational details that cost real debugging time:
-
-- **The registry fills before the child exists.** `deploy_org` writes the
-  registry in the parent transaction, but `gl.deploy_contract(on="finalized")`
-  deploys the child in a follow-up transaction. Reading the child immediately
-  after `deploy_org` returns "Contract not found". Callers must wait, so the
-  driver retries reads.
-- **A child of the factory has the factory as founder**, so the factory is its
-  only member and nobody else can vote. `cast_vote` fails with "sender is not a
-  member" until a `GOVERNANCE` proposal adds the intended members — which now
-  costs a vote and the timelock rather than one operator call. The factory cannot
-  know the intended membership at deploy time, so this is a deliberate extra
-  step, and it is the kind of thing a real deployment guide has to say out loud.
-  A freshly created trust is therefore single-member until someone proposes its
-  membership, which is exactly the state
-  [What this does not fix](#what-this-does-not-fix) is about.
-
-Storing 63 KB of source in factory storage is a real cost. It is a one-time
-write per factory and the trade is worth it here, but a production version would
-want the template in a content-addressed store and pass only a hash.
-
-### The tick cooldown only moves forward
-
-Discovered on Studionet when a policy change appeared not to take effect:
-lowering `tick_interval` does **not** pull `next_tick_at` backwards. That is
-deliberate, and it is the property that keeps the on-chain cooldown a real
-bound on how fast the treasury can drain, rather than something the operator can
-switch off. It is pinned by
-`test_shortening_the_cooldown_never_pulls_the_deadline_back`.
 
 ## Direct mode is not GenVM
 

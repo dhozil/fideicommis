@@ -9,7 +9,7 @@
  * against the transaction it submitted as well.
  *
  * Usage:
- *   node deploy/deployScript.ts                       # the factory, then a trust
+ *   node deploy/deployScript.ts                       # deploy one trust and read it back
  *   node deploy/deployScript.ts --name "Open Archive Trust"
  *   node deploy/deployScript.ts --deployer 0xabc…      # provision an existing factory
  *   node deploy/deployScript.ts --dry-run             # print what it would do
@@ -87,7 +87,8 @@ function loadDriver(): { makeClient: Function; makeDriver: Function } {
 /**
  * A deployment that reaches FINALIZED and still rolled back is the most expensive
  * thing a deploy script can do wrong, because the address looks real and the
- * receipt looks final.
+ * receipt looks final. There is also no factory, so nothing here has to wait on a
+ * second contract: what is deployed is what is read back.
  *
  * Both checks live in scripts/studionet.cjs, not here: the driver verifies the
  * receipt's hash against the transaction it submitted, and reads the leader
@@ -100,60 +101,47 @@ async function main() {
   const key = keyPath();
   const { makeClient, makeDriver } = loadDriver();
   const client = makeClient(key);
-  const { deployContract, readFrom, writeTo, balance } = makeDriver(client);
+  const { deployContract, readFrom, balance } = makeDriver(client);
 
   console.log(`deployer   ${client.account.address}`);
   console.log(`balance    ${(Number(await balance()) / 1e18).toFixed(6)} GEN`);
 
   if (dryRun) {
     console.log("\n--dry-run, so nothing will be sent. This would:");
-    console.log(`  1. deploy contracts/fideicommis_factory.py`);
-    console.log(`  2. provision it with the source of contracts/fideicommis.py`);
-    console.log(`  3. deploy a trust named "${NAME}" through the factory`);
-    console.log(`  4. read back get_org_name and get_constitution to confirm the deployment is real`);
+    console.log(`  1. deploy contracts/fideicommis.py`);
+    console.log(`  2. read back get_org_name and get_constitution to confirm the deployment is real`);
     return;
   }
 
   const source = fs.readFileSync(path.join(ROOT, "contracts", "fideicommis.py"), "utf-8");
-  const factorySource = fs.readFileSync(path.join(ROOT, "contracts", "fideicommis_factory.py"), "utf-8");
 
-  console.log("\n[1] deploy the factory");
-  const factory = await deployContract(factorySource);
-  if (!factory.ok) {
-    console.error(`  FAILED at ${factory.phase}: ${factory.reason}`);
-    process.exit(1);
-  }
-  console.log(`  ${factory.hash}\n  factory ${factory.address}`);
-  assertHash(factory, factory.hash);
-
-  console.log("\n[2] provision the template");
-  const provision = await writeTo(factory.address!, "provision_template", [source]);
-  if (!provision.ok) {
-    console.error(`  FAILED at ${provision.phase}: ${provision.reason}`);
-    process.exit(1);
-  }
-  console.log(`  ${provision.hash}`);
-
-  console.log("\n[3] deploy a trust through the factory");
-  const created = await writeTo(factory.address!, "deploy_org", [
+  console.log("\n[1] deploy the trust");
+  const created = await deployContract(source, [
+    // Argument order must match Fideicommis.__init__ exactly:
+    // (org_name, mission, charter, operator, evidence_urls). This differs from
+    // the factory's deploy_org signature, which listed evidence before operator.
     NAME,
     MISSION,
     CHARTER,
-    "https://en.wikipedia.org/wiki/Climate_change_adaptation",
     client.account.address,
+    "https://en.wikipedia.org/wiki/Climate_change_adaptation",
   ]);
   if (!created.ok) {
     console.error(`  FAILED at ${created.phase}: ${created.reason}`);
     process.exit(1);
   }
   console.log(`  ${created.hash}`);
+  const trust = created.address;
+  if (!trust) {
+    console.error("  the receipt carried no contract address");
+    process.exit(1);
+  }
+  // The address is the whole point of a deploy, and with no factory there is no
+  // registry to look it up in later.
+  console.log(`  trust ${trust}`);
+  assertHash(created, created.hash);
 
-  const names = JSON.parse(String(await readFrom(factory.address!, "get_org_names")));
-  const trust = String(await readFrom(factory.address!, "get_org_address", [NAME]));
-  console.log(`  registered: ${JSON.stringify(names)}`);
-  console.log(`  trust     ${trust}`);
-
-  console.log("\n[4] read the trust back, because a FINALIZED receipt is not proof");
+  console.log("\n[2] read the trust back, because a FINALIZED receipt is not proof");
   const deployedName = String(await readFrom(trust, "get_org_name"));
   const constitution = String(await readFrom(trust, "get_constitution"));
   if (deployedName !== NAME) {
@@ -166,6 +154,9 @@ async function main() {
   console.log("\ndeployed. Two things left by hand, on purpose:");
   console.log("  bootstrap_rules        derives the rulebook the committee judges by");
   console.log("  fund                   anyone may do this, and it revives a dormant trust");
+  console.log("");
+  console.log("There is no factory, so there is no key that decides what code future");
+  console.log("trusts run. Whoever deploys a trust is whoever chose to.");
 }
 
 function assertHash(result: { receipt?: Record<string, unknown> }, expected: string) {

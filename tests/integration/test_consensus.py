@@ -52,10 +52,6 @@ def fideicommis_path() -> str:
     return str(ROOT / "contracts" / "fideicommis.py")
 
 
-def factory_path() -> str:
-    return str(ROOT / "contracts" / "fideicommis_factory.py")
-
-
 def deploy_org(account, treasury_atto=10 * GEN, evidence=""):
     contract = get_contract_factory(contract_file_path=fideicommis_path()).deploy(
         args=["Climate Fund", MISSION, CHARTER, account.address, evidence],
@@ -70,10 +66,6 @@ def deploy_org(account, treasury_atto=10 * GEN, evidence=""):
 def submit_grant(org, account, amount=GEN, title=GRANT_TITLE, body=GRANT_BODY):
     """Proposal ids are deterministic (p1, p2, ...) so tests can address them directly."""
     return org.submit_proposal(args=[title, body, "GRANT", amount, RECIPIENT], account=account)
-
-
-def deploy_factory(account):
-    return get_contract_factory(contract_file_path=factory_path()).deploy(args=[], account=account)
 
 
 # ------------------------------------------------------------------ no LLM
@@ -255,39 +247,3 @@ def test_charter_amendment_round_trip(default_account):
     assert json.loads(org.get_charter_rules().call()) == []
 
 
-# ------------------------------------------------------------------ factory
-
-
-def test_factory_deploys_and_registers_child_fideicommises(default_account):
-    factory = deploy_factory(default_account)
-    assert int(factory.get_org_count().call()) == 0
-
-    assert tx_execution_succeeded(
-        factory.deploy_org(
-            args=[
-                "Coastal Trust",
-                "Keep coastal flood defences maintained for the villages that need them.",
-                CHARTER,
-                "",
-                default_account.address,
-            ],
-            account=default_account,
-        )
-    )
-
-    assert int(factory.get_org_count().call()) == 1
-    assert json.loads(factory.get_org_names().call()) == ["Coastal Trust"]
-    org_address = factory.get_org_address(args=["Coastal Trust"]).call()
-    assert org_address.lower() != default_account.address.lower()
-    assert factory.get_org_status(args=["Coastal Trust"]).call() == "ACTIVE"
-    assert int(factory.get_org_treasury(args=["Coastal Trust"]).call()) == 0
-    assert json.loads(factory.get_org_summary(args=["Coastal Trust"]).call())["name"] == "Coastal Trust"
-
-
-def test_factory_rejects_a_duplicate_name(default_account):
-    factory = deploy_factory(default_account)
-    args = ["Duplicate", MISSION, CHARTER, "", default_account.address]
-    assert tx_execution_succeeded(factory.deploy_org(args=args, account=default_account))
-    second = factory.deploy_org(args=args, account=default_account)
-    assert not tx_execution_succeeded(second)
-    assert int(factory.get_org_count().call()) == 1

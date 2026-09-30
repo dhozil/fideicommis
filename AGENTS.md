@@ -3,7 +3,7 @@
 ## Project identity
 
 - Project: Fideicommis
-- Contract: `Fideicommis` in `contracts/fideicommis.py`, plus `FideicommisFactory`
+- Contract: `Fideicommis` in `contracts/fideicommis.py`
 - Primary language for the contract: Python, executed in GenVM
 - Primary chain: GenLayer, Studionet for verification
 - Pinned runner: `py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6`
@@ -31,8 +31,8 @@ touches one needs a test that fails without it.
 2. **No float division, anywhere.** `tests/test_no_float.py` inventories every
    division in the contract and fails on a float one. A float in
    consensus-executed code crashes the VM instead of returning a wrong number.
-3. **The runner stays pinned.** The factory refuses a template without a `Depends`
-   header, and CI asserts the header is still present.
+3. **The runner stays pinned.** Every contract file carries the `Depends` header
+   for `py-genlayer:1jb45aa8yn…`, and CI lints each file.
 4. **A payout declares its conservation bucket.** `_pay` takes a bucket argument
    and rejects an unrecognised one *before* any value moves, so a new payout path
    cannot leave the estate without appearing in the identity
@@ -67,7 +67,7 @@ encodes:
 ## Layout
 
 ```
-contracts/     the two contracts and a storage-semantics fixture
+contracts/     the contract, and a storage-semantics fixture
 tests/         direct mode (no network), plus integration for a real node
 scripts/       Studionet drivers, all sharing scripts/studionet.cjs
 web/           the audit reader
@@ -93,11 +93,11 @@ node deploy/deployScript.ts --dry-run
 The order that catches the most, because each layer has caught something the
 others did not:
 
-1. `python -m pytest -q` — 133 tests, including the adversarial capture sequence.
-2. `genvm-lint check` on all three contract files.
-3. A live run on Studionet. This is where the reader's throttling bug, the
-   driver's hardcoded cycle count, and the factory's impossible template read were
-   all found. Neither the test suite nor the linter reported any of them.
+1. `python -m pytest -q` — 121 tests, including the adversarial capture sequence.
+2. `genvm-lint check` on both contract files.
+3. A live run on Studionet. This is where the reader's throttling bug and the
+   driver's hardcoded cycle count were found. Neither the test suite nor the
+   linter reported either of them.
 4. For the reader, a screenshot. Both of its bugs were things only a rendered
    page showed: a cache-truncated label and a 500 where a 404 was the honest
    answer.
@@ -118,3 +118,20 @@ others did not:
 `CONTRIBUTING.md` has the same rules in checklist form. `SECURITY.md` states what
 the contract enforces without trust in the operator and, separately, what no
 contract can enforce — the second list is the more useful one.
+
+## Why there is no factory
+
+There was one, and it was removed. A factory has to be the only thing that can
+create a trust, and it has to decide once and forever what code every future trust
+will run. Ours did that with a single key that `provision_template` locked in and
+no governance path could ever change, which is a permanent unrevocable authority
+over the platform.
+
+That is the same shape as the four-call capture this project spent several passes
+closing, only quieter, and it was the operator's to use. What remains is the
+stronger property: **whoever deploys a trust is whoever chose to**, and no key
+anywhere decides what code anyone else may run.
+
+The registry the factory kept, name to address, moved off-chain to the reader's
+landing page. A directory of live trusts was worth keeping; on-chain state
+controlled by one address was not.

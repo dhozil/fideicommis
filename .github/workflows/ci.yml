@@ -88,27 +88,3 @@ jobs:
             exit 1
           fi
           echo "ok: no 32-byte literal in the reader source"
-
-  # A cheap guard that the factory still recognises the template it is meant to
-  # provision. The marker is a literal in the factory and a class name in the
-  # contract; renaming one without the other is a silent break.
-  template-marker:
-    name: factory template marker matches the contract
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: pip install -e ".[dev]"
-      - name: assert the marker and the class agree
-        run: |
-          python - <<'PY'
-          import pathlib, re, sys
-          factory = pathlib.Path("contracts/fideicommis_factory.py").read_text()
-          contract = pathlib.Path("contracts/fideicommis.py").read_text()
-          marker = re.search(r'ORG_CONTRACT_MARKER\s*=\s*"([^"]+)"', factory).group(1)
-          if marker not in contract:
-              sys.exit(f"factory marker {marker!r} is not present in fideicommis.py")
-          print(f"ok: factory marker {marker!r} present")
-          PY

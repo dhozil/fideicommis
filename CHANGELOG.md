@@ -10,6 +10,47 @@ The public interface that matters is the set of `get_*` view methods, the
 is a major version, because deployed trusts keep their state and the layout is
 positional.
 
+## [0.6.0] — one contract, and no key that owns the future
+
+The factory is gone. That makes the project one contract, one file, and it removes
+the quietest capture in the codebase.
+
+### Removed
+
+- `FideicommisFactory`, `tests/test_fideicommis_factory.py`, the two factory
+  integration tests, `scripts/run_factory_check.cjs`, and the factory guards inside
+  the contract, the tests, the CI workflow and the reader.
+- The `provision_template` step, the frozen 80 KB template, and the duplicate-name
+  check it needed.
+
+### Why
+
+`provision_template` was deployer-only, ran once, and refused every later call by
+design: "this factory is frozen". So one address permanently fixed the code that
+every trust created through that factory would ever run, with no governance path
+out of it.
+
+In a project whose claim is that the operator cannot manufacture authority
+unilaterally, that is a fifth capture — the same shape as the four-call one, only
+quieter, and it was the operator's to use. It also had no working justification: it
+existed because a single-file deployment cannot read a sibling file, and every
+meaningful live run deployed `fideicommis.py` directly.
+
+### What is left
+
+Whoever deploys a trust is whoever chose to. No key decides what code anyone else
+may run. The name-to-address registry the factory kept moved off-chain, to the
+reader's landing page, because a directory of live trusts was worth keeping and
+on-chain state owned by one address was not.
+
+Also checked and recorded: two `gl.Contract` subclasses cannot coexist in one VM
+instance, in one file *or* imported from two modules, because `__known_contract__`
+is a single global in the SDK namespace. Two contracts therefore means two
+deployments, and merging the classes was never available. An experiment verified
+it; the result is in this repository's history rather than as a stale comment.
+
+121 direct-mode tests, genvm-lint green.
+
 ## [0.5.0] — the audit reader, as a full-stack application
 
 The reader that makes "a trust that cannot explain a decision cannot be audited"
