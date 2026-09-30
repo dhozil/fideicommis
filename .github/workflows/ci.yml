@@ -43,9 +43,8 @@ jobs:
       - name: full direct-mode suite
         run: python -m pytest -v
 
-      - name: viewer and drivers parse
-        run: |
-          for f in scripts/*.cjs viewer/app.js; do node --check "$f"; done
+      - name: studionet drivers parse
+        run: for f in scripts/*.cjs; do node --check "$f"; done
 
   # The contract is the submission. The reader is checked too, but on its own
   # terms: it typechecks, builds, and refuses to leak chain code into a client

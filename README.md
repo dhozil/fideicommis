@@ -142,7 +142,6 @@ scripts/
   run_mission_loop.cjs           funding, burn, keeper reimbursement, dormancy, revival
   run_proposal_flow.cjs         rejection path, then the full money path
   run_factory_check.cjs         template provisioning, trust creation, cross-contract calls
-  serve_viewer.cjs              a dependency-free relay, if you would rather not run Next
 web/                           the audit reader: Next.js, read-only, holds no key
   run_fideicommis.cjs         the three core claims: acts by itself, pays a non member, amends itself
 tests/
@@ -157,8 +156,12 @@ tests/
 ## Quick check for a reviewer
 
 ```bash
-pip install -r requirements.txt
+pip install -e ".[dev]"
 python -m pytest -v
+for f in scripts/*.cjs; do node --check "$f"; done
+
+# the reader
+cd web && npm ci && npm run build && npx tsc --noEmit
 ```
 
 Expect `133 passed, 10 skipped`. The skips are the integration tests, which skip

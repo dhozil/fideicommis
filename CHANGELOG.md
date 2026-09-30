@@ -35,9 +35,10 @@ checkable by clicking, rather than by reading a document.
 
 ### Changed
 
-- The static `viewer/` remains as a dependency-free alternative and as the
-  simplest way to read a trust with one `node` command. The Next app supersedes
-  it as the primary reader.
+- The static `viewer/` and its relay are removed. They were a second implementation
+  of the same reader — the same pacing, the same conservation arithmetic, the same
+  decision chain, the same design tokens — and two implementations of one thing rot
+  on every contract change. `web/` is the reader.
 - `set_policy` docstring and README examples now show three arguments, matching
   the contract. The earlier five-argument form appeared in the CLI walkthrough
   and would have failed on a call.
@@ -88,8 +89,10 @@ The capture path closed, and the constitution became checkable from outside.
   tighten the trust and never loosen it past them.
 - `get_constitution` and `get_constitutional_state`, separate on purpose: the
   first returns only what a vote cannot change, so a caller can assert on it.
-- `viewer/` and `scripts/serve_viewer.cjs`: a read-only audit page. Three static
-  files, no build step, no dependencies, no account, no write path.
+- `web/`: the read-only audit reader, replacing a static version. Next.js 16, App
+  Router, React 19, TypeScript strict with `noUncheckedIndexedAccess`.
+  Server-rendered audit records at `/trust/[address]`, `force-dynamic` so a record
+  is never baked into a build.
 - `.github/workflows/ci.yml`, which gates on `genvm-lint`, the full suite, and an
   assertion that the factory's template marker is present in the contract.
 

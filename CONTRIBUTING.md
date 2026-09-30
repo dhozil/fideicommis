@@ -20,7 +20,8 @@ test is not a passing test, and the README says so.
 genvm-lint check contracts/fideicommis.py
 genvm-lint check contracts/fideicommis_factory.py
 python -m pytest -q
-for f in scripts/*.cjs viewer/app.js; do node --check "$f"; done
+for f in scripts/*.cjs; do node --check "$f"; done
+cd web && npx tsc --noEmit && npm run build
 ```
 
 CI runs all four. It also asserts that the factory's `ORG_CONTRACT_MARKER` string
