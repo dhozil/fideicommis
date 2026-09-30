@@ -556,7 +556,9 @@ repeated per script, because each of these was learned the hard way:
 - **A transaction can reach ACCEPTED and FINALIZED and still have rolled back.**
   `set_policy` failing on-chain looked identical to success until the driver
   started reading `consensus_data.leader_receipt[0].result.payload`. Always check
-  `execution_result` and `result.status === "return"`.
+  `execution_result` and `result.status === "return"`. A local node produced a
+  receipt that said `status_name: FINALIZED` and, in the same payload,
+  `result.status: rollback` — which is why nothing here trusts a status name.
 - **30 JSON-RPC requests per minute, 500 per hour**, rejected with `-32029` and a
   `retry_after_seconds` hint. Every call is paced and backs off on the hint.
 - **Reads retry.** A child deployed `on="finalized"` is not readable until the

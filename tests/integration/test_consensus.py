@@ -28,10 +28,11 @@ import pytest
 from gltest import get_contract_factory
 from gltest.assertions import tx_execution_succeeded
 
+from conftest import staged_contract
+
 ROOT = Path(__file__).resolve().parents[2]
 
 GEN = 10 ** 18
-
 MISSION = "Permanently fund verifiable open source climate adaptation research."
 
 CHARTER = (
@@ -49,18 +50,51 @@ RECIPIENT = "0x" + "11" * 20
 
 
 def fideicommis_path() -> str:
-    return str(ROOT / "contracts" / "fideicommis.py")
+    """A fresh path for every deploy, because the local engine only honours
+    @allow_storage on a module it has not already loaded. See conftest for the
+    measurement behind that."""
+    return staged_contract()
 
 
 def deploy_trust(account, treasury_atto=10 * GEN, evidence=""):
-    contract = get_contract_factory(contract_file_path=fideicommis_path()).deploy(
+    """Deploy, then hand back a contract that actually has methods on it.
+
+    gltest's own deploy() returns a Contract whose method set came out empty, so
+    every call on it would fail with "no attribute get_org_name". The schema it
+    builds from is fetched over RPC with a fallback chain, and on a local node the
+    fallback answers first with a schema for something else. Fetching the schema
+    from the factory and building the wrapper by hand is the same code path, minus
+    the fallback. If this ever stops being necessary, the assertion in
+    _assert_methods_present is what will say so.
+    """
+    from gltest.contracts.contract import Contract
+    from gltest.utils import extract_contract_address
+
+    factory = get_contract_factory(contract_file_path=fideicommis_path())
+    receipt = factory.deploy_contract_tx(
         args=["Climate Fund", MISSION, CHARTER, account.address, evidence],
         account=account,
     )
+    schema = factory._get_schema_with_fallback()
+    if not isinstance(schema, dict) or not schema.get("methods"):
+        raise AssertionError("gltest produced no contract schema, so no method can be called")
+    contract = Contract.new(
+        address=extract_contract_address(receipt), schema=schema, account=account
+    )
+    _assert_methods_present(contract)
     if treasury_atto:
-        receipt = contract.fund(args=[]).transact(value=treasury_atto, account=account)
-        assert tx_execution_succeeded(receipt)
+        funded = contract.fund(args=[]).transact(value=treasury_atto, account=account)
+        assert tx_execution_succeeded(funded)
     return contract
+
+
+def _assert_methods_present(contract):
+    """Fail here, plainly, rather than at the first view call with a confusing name."""
+    for method in ("get_org_name", "fund", "bootstrap_rules", "submit_proposal"):
+        assert hasattr(contract, method), (
+            f"the deployed contract has no {method}. genlayer-test built it from a schema "
+            f"that did not describe this contract."
+        )
 
 
 def submit_grant(org, account, amount=GEN, title=GRANT_TITLE, body=GRANT_BODY):

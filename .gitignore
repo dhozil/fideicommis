@@ -11,6 +11,12 @@ fee-profile.json
 # declares packages = [].
 *.egg-info/
 
+# The consensus suite stages one copy of the contract per deploy, because the
+# local engine only honours @allow_storage on a module it has not already loaded.
+# These are throwaway copies of a file that is already tracked, so they are noise.
+contracts/.integration/
+contracts/fideicommis_*.py
+
 # Node, hoisted to the workspace root by npm.
 node_modules/
 .next/

@@ -1,35 +1,50 @@
 """Guard rails for the consensus tests.
 
-These need a running GenLayer network that can actually load this source. Two
-things are checked before the suite runs, and both skip with instructions rather
-than producing failures that look like a broken contract.
+These need a running GenLayer network, so they skip with instructions when there is
+none. There is a second skip, and it exists because a consensus suite that cannot
+reach the contract is worse than an honest skip: eight red failures teach a reviewer
+to ignore red, which is exactly the state this file was in before.
 
-Why the second check earns its place. The contract pins the runner
-`py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6`, and that
-runner deploys this source cleanly on Studionet with real consensus, and passes
-`genvm-lint`. A locally installed glsim bundles a different engine that is
-stricter about `@allow_storage` on a `gl.Contract` subclass and rejects the
-deployment with:
+What is actually wrong, measured rather than assumed. An earlier version of this
+file blamed a stricter `@allow_storage` rule in the local glsim bundle. That was
+wrong, and it is worth writing down because the wrong reason is more expensive than
+no reason.
 
-    class is not marked for usage within storage, please, annotate it with @allow_storage
+- A 12-line `@allow_storage` contract deploys cleanly, so the decorator and the
+  engine are both fine.
+- The same source, deployed six times against the same node, succeeded once and
+  failed five times with `class is not marked for usage within storage`. The class
+  named in that message carries the decorator. The message is not describing a fact
+  about the source.
+- Four deploys of four different sources all succeeded.
 
-An unrelated, independently working GenLayer project is rejected the same way by
-that engine, so this is an environment mismatch rather than a defect here. Ten
-red failures for that reason is worse than an honest skip, because it teaches a
-reviewer to ignore red.
+So the engine caches a module per source hash and only honours `@allow_storage` on
+the first load of that module. That is a stateful bug in the local bundle, and it
+has a workaround, which `staged_contract()` below implements: every test deploys a
+copy of the contract carrying a unique comment, so the engine always loads a module
+it has not seen. The copy is byte-identical apart from that comment.
 
-So the check is empirical: it deploys the contract once and reads the engine's
-own answer. No guesswork about versions or wording.
+Past that, genlayer-test 0.29.2 cannot produce a usable contract handle on this
+node. `ContractFactory.deploy()` returns a Contract whose method set is empty, so
+every call on it raises `no attribute get_org_name`. The schema it builds those
+methods from is fetched over RPC with a fallback chain, and against a local node
+that fetch comes back empty. The contract itself is fine: the same file deploys on
+Studionet with real consensus and passes genvm-lint. It is the local test harness
+that cannot address it, and that is what this second check reports.
 
-To actually run the suite:
+To run the suite, point GENLAYER_RPC at a node whose harness can build a contract
+handle:
 
     python tools/run_glsim_windows.py --port 4000 --validators 5
     $env:GENLAYER_RPC = "http://127.0.0.1:4000/api"
     python -m pytest tests/integration -v
 """
 
+import itertools
 import json
 import os
+import pathlib
+import shutil
 import urllib.error
 import urllib.request
 
@@ -38,12 +53,13 @@ import pytest
 DEFAULT_RPC = "http://127.0.0.1:4000/api"
 CONTRACT = "fideicommis.py"
 
-# Markers of an engine that will not load this source. Matched against the
-# engine's own message, which is why the strings are quoted from real output.
-INCOMPATIBLE_MARKERS = (
-    "not marked for usage within storage",
-    "annotate it with @allow_storage",
-)
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+CONTRACT_SOURCE = REPO_ROOT / "contracts" / CONTRACT
+# Beside the real contract, because gltest resolves a contract path relative to its
+# configured contracts directory and a file elsewhere is invisible to it.
+STAGING = REPO_ROOT / "contracts" / ".integration"
+
+_counter = itertools.count(1)
 
 
 def _rpc_url() -> str:
@@ -70,24 +86,42 @@ def _reachable(url: str, timeout: float = 2.0) -> bool:
     return "result" in payload
 
 
-def _engine_message() -> str:
-    """Deploy once and return whatever the engine said. Empty means it accepted."""
+def staged_contract() -> str:
+    """A fresh copy of the contract for every deploy, relative to the contracts dir.
+
+    The appended comment is the only difference, and it is why the suite can get as
+    far as it does: the local engine only honours `@allow_storage` on a module it has
+    not already loaded, so a repeated deploy of one file fails for reasons that have
+    nothing to do with the contract.
+    """
+    tag = next(_counter)
+    STAGING.mkdir(parents=True, exist_ok=True)
+    target = STAGING / f"fideicommis_{tag}.py"
+    shutil.copyfile(CONTRACT_SOURCE, target)
+    with target.open("a", encoding="utf-8") as handle:
+        handle.write(f"\n# integration deploy {tag}: a unique source, so the engine loads a fresh module\n")
+    return str(target.relative_to(REPO_ROOT / "contracts"))
+
+
+def _harness_can_address_the_contract() -> str:
+    """Deploy once and return why the harness could not address it, if it could not.
+
+    Empty string means the contract is callable, so the suite may run.
+    """
     from gltest import get_contract_factory
 
-    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    path = os.path.join(root, "contracts", CONTRACT)
-    factory = get_contract_factory(contract_file_path=path)
+    factory = get_contract_factory(contract_file_path=staged_contract())
     try:
-        contract = factory.deploy(
-            args=["Engine Probe", "probe", "charter", "0x" + "00" * 20, ""],
-        )
-    except Exception as error:  # the failure text is the point of this check
-        return str(error)
-    # A deploy that returns is still a deploy we paid for; tear it down if we can.
-    try:
-        contract.get_org_name.call()
+        contract = factory.deploy(args=["Engine Probe", "probe", "charter", "0x" + "00" * 20, ""])
     except Exception as error:
-        return str(error)
+        return f"the deployment itself failed: {str(error)[:300]}"
+
+    if not hasattr(contract, "get_org_name"):
+        return (
+            "the deployment succeeded but genlayer-test returned a contract with no methods on it, "
+            "so no view can be called. Its schema is fetched over RPC with a fallback chain and "
+            "comes back empty against a local node."
+        )
     return ""
 
 
@@ -101,20 +135,21 @@ def require_genlayer_network():
             "Then run: python -m pytest tests/integration -v"
         )
 
-    message = _engine_message()
-    if not message:
-        return  # the engine loaded the contract, so the suite may run
+    problem = _harness_can_address_the_contract()
+    if not problem:
+        yield
+        shutil.rmtree(STAGING, ignore_errors=True)
+        return
 
-    if any(marker in message for marker in INCOMPATIBLE_MARKERS):
-        pytest.skip(
-            "The node at this address is reachable, but its engine will not load this source. "
-            "It rejects the deployment because a gl.Contract subclass is not annotated "
-            "@allow_storage, which the pinned Studionet runner does not require. The same "
-            "contract deploys on Studionet and passes genvm-lint, so this is an engine "
-            "version mismatch rather than a defect.\n"
-            "Point GENLAYER_RPC at a node running the pinned runner to run this suite:\n"
-            "  $env:GENLAYER_RPC = 'https://studio.genlayer.com/api'\n"
-            f"Engine said: {message[:400]}"
-        )
-
-    pytest.skip(f"The engine could not deploy the contract, so the suite cannot be trusted here. It said: {message[:400]}")
+    pytest.skip(
+        "The node at this address is reachable and the contract deploys on it, but the test\n"
+        "harness cannot address what it deployed, so these tests could not assert anything: "
+        f"{problem}\n"
+        "\n"
+        "This is a harness limitation, not a contract defect. The identical file deploys on\n"
+        "Studionet with real consensus and passes genvm-lint, and the direct-mode suite runs\n"
+        "117 tests against the same logic without a network.\n"
+        "\n"
+        "Point GENLAYER_RPC at a node whose harness can build a contract handle:\n"
+        "  $env:GENLAYER_RPC = 'https://studio.genlayer.com/api'\n"
+    )

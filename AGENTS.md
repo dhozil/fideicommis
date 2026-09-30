@@ -114,12 +114,20 @@ others did not:
 
 - `gltest` cannot reach Studionet (User-Agent filtering). Live verification runs
   through the Node drivers.
-- A locally installed `glsim` bundles an engine that rejects any `gl.Contract`
-  subclass not annotated `@allow_storage`, which the pinned Studionet runner does
-  not require. The integration suite therefore deploys once, reads what the engine
-  said, and skips with that text rather than reporting ten failures that teach a
-  reviewer to ignore red. `tools/run_glsim_windows.py` carries the Windows
-  workarounds.
+- The local `glsim` bundle has two defects that stop the consensus suite, both
+  measured rather than assumed and both recorded in
+  `tests/integration/conftest.py`. It only honours `@allow_storage` on a module it
+  has not already loaded, so a repeated deploy of one source fails with a message
+  that names a class carrying the decorator; `staged_contract()` works around that
+  by deploying a unique copy per test. And `genlayer-test` 0.29.2 cannot build a
+  usable contract handle against a local node: `deploy()` returns a contract with no
+  methods, because its schema comes back empty from the RPC fallback chain. So the
+  suite skips, with the reason, rather than reporting eight failures that teach a
+  reviewer to ignore red. The direct-mode suite runs 117 tests against the same
+  logic without a network.
+- An earlier version of that skip blamed a stricter `@allow_storage` rule, which a
+  12-line control contract disproved. Wrong reasons cost more than none.
+- `tools/run_glsim_windows.py` carries the Windows workarounds for glsim.
 
 ## Contributing
 

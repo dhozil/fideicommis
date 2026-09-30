@@ -134,6 +134,42 @@ contributor, and it is what CI runs as well as the bash versions.
 
 117 direct-mode tests, genvm-lint green.
 
+### The consensus suite skips, and the reason it gave was wrong
+
+The integration suite has skipped since it was written, and it blamed a stricter
+`@allow_storage` rule in the local glsim bundle. A 12-line control contract carrying
+the same decorator disproved that: it deploys cleanly, so the decorator and the
+engine are both fine.
+
+The same source deployed six times against the same node then succeeded once and
+failed five times with `class is not marked for usage within storage`, naming a
+class that does carry the decorator. Four deploys of four different sources all
+succeeded. So the engine caches a module per source hash and only honours
+`@allow_storage` on the first load of it: a stateful bug, not a property of the
+contract.
+
+`staged_contract()` now works around it, giving every test a unique copy of the
+contract so the engine always loads a module it has not seen. With that, the suite
+stops skipping and starts running: the contract deploys on the local node and
+`tx_execution_succeeded` sees a real receipt, which is a consensus step that had
+never executed here.
+
+Past that, genlayer-test 0.29.2 cannot address what it deployed on a local node.
+`deploy()` returns a Contract whose method set is empty, so every call on it raises
+`no attribute get_org_name`; the schema those methods come from is fetched over RPC
+through a fallback chain and comes back empty. The contract is fine, the harness is
+the problem, and the skip now says exactly that, with the measurement, instead of
+citing a rule that does not exist.
+
+One receipt from that run is worth recording, because it is this project's own
+stated rule happening in the wild: the failed deploy came back `status_name:
+FINALIZED` with `result.status: rollback` in the leader receipt. A transaction can
+be final and have rolled back, and only
+`consensus_data.leader_receipt[0].result.payload` says which. Every driver here
+checks exactly that field, and here is the engine agreeing with them.
+
+117 direct-mode tests, genvm-lint green.
+
 ## [0.5.0] — the audit reader, as a full-stack application
 
 The reader that makes "a trust that cannot explain a decision cannot be audited"
