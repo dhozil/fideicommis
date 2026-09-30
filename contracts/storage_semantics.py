@@ -11,6 +11,7 @@ from genlayer import *
 import json
 
 
+@allow_storage
 class StorageSemantics(gl.Contract):
     nested: TreeMap[str, DynArray[str]]
     names: TreeMap[str, str]

@@ -38,6 +38,7 @@ class OrgRecord:
     template_bytes: u256
 
 
+@allow_storage
 class FideicommisFactory(gl.Contract):
     deployer: Address
     org_count: u256

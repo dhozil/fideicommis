@@ -343,6 +343,7 @@ def _buckets_within_tolerance(leader_bucket: int, validator_bucket: int, toleran
     return abs(leader_bucket - validator_bucket) <= tolerance
 
 
+@allow_storage
 class Fideicommis(gl.Contract):
     # Published so a deployment checker can assert these are the numbers, rather
     # than trusting that a deployer read them somewhere. The hard limits are
