@@ -22,6 +22,10 @@ the quietest capture in the codebase.
   the contract, the tests, the CI workflow and the reader.
 - The `provision_template` step, the frozen 80 KB template, and the duplicate-name
   check it needed.
+- `contracts/storage_semantics.py` and `tests/test_storage_semantics.py`.
+  `contracts/` is one file now, and the storage behaviours that survived the move
+  are asserted through `Fideicommis` itself rather than through a proxy — see
+  "Storage semantics, asserted where they are used" below.
 
 ### Why
 
@@ -49,7 +53,31 @@ is a single global in the SDK namespace. Two contracts therefore means two
 deployments, and merging the classes was never available. An experiment verified
 it; the result is in this repository's history rather than as a stale comment.
 
-121 direct-mode tests, genvm-lint green.
+### Storage semantics, asserted where they are used
+
+The fixture contract existed to pin the GenVM storage behaviours the trust relies
+on, so a runner upgrade that changed one would fail loudly instead of quietly
+corrupting proposal records. That reasoning was right. The shape was wrong: a
+test that pins a behaviour of a proxy proves the proxy still agrees with itself,
+and a runner upgrade would have left the trust unpinned anyway, because the
+fixture and the contract would have been tested by different code.
+
+Three of the five behaviours the fixture pinned are actually used, and are now
+asserted through `Fideicommis`, in tests named `test_nested_dynarray_*`,
+`test_a_nested_list_is_written_exactly_once` and
+`test_tremap_get_falls_back_to_zero_for_an_unknown_address`. Two are not used at
+all — `if key in self.tree` and `inmem_allocate` appear nowhere in the contract —
+and are no longer asserted, because pinning them would block a runner upgrade for
+a code path this project never executes.
+
+Writing them against the contract changed one test into a different test. The
+obvious assertion to write was "reassigning a nested list replaces it, it does not
+extend it", but that is unreachable through the public API: `assess_proposal`
+raises "was already assessed" before it touches the field, so a nested list is
+assigned exactly once. The guard is a stronger guarantee than the semantics
+question it made unaskable.
+
+114 direct-mode tests, genvm-lint green.
 
 ## [0.5.0] — the audit reader, as a full-stack application
 

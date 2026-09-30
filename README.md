@@ -135,7 +135,6 @@ When it reaches zero the fideicommis enters `DORMANT` and stops acting. Any
 ```
 contracts/
   fideicommis.py              the trust itself: charter, treasury, runway, autonomous cycle
-    storage_semantics.py  fixture contract that pins GenVM storage behaviour
 scripts/
   studionet.cjs                  shared Studionet driver: pacing, execution checks, deploy, write
   run_mission_loop.cjs           funding, burn, keeper reimbursement, dormancy, revival
@@ -147,7 +146,6 @@ tools/run_glsim_windows.py     the Windows glsim workarounds
 tests/
   test_fideicommis.py         direct-mode tests, millisecond feedback
     test_no_float.py                invariant: no float division, no float in consensus
-  test_storage_semantics.py       regression tests for the storage rules we rely on
   integration/
     test_consensus.py       the same flows through a real validator committee
 ```
@@ -167,7 +165,7 @@ npm run typecheck --workspace web
 npm run build --workspace web
 ```
 
-Expect `121 passed, 8 skipped`. The skips are the integration tests, which skip
+Expect `114 passed, 8 skipped`. The skips are the integration tests, which skip
 themselves when no GenLayer node is reachable. `tests/test_no_float.py` is the
 file to read first if the review is about VM stability.
 
@@ -262,7 +260,7 @@ pip install -e ".[dev]"   # the one dependency list is pyproject.toml
 # static checks
 genvm-lint check contracts/fideicommis.py
 
-# 121 tests, no network, no model calls, ~11 seconds
+# 114 tests, no network, no model calls, ~9 seconds
 python -m pytest -v
 
 # the VM stability invariant on its own
@@ -1030,16 +1028,32 @@ contract runs. Treat a green direct-mode suite as necessary, never sufficient.
 ## Storage rules this contract depends on
 
 GenLayer persists Python objects by pickling, so storage shape is part of the
-contract's ABI. `tests/test_storage_semantics.py` pins three behaviours that
-`genlayer-test` 0.29 exposes, each of which silently corrupts proposal
-bookkeeping if a runner upgrade changes it:
+contract's ABI. These are the three behaviours `genlayer-test` 0.29 exposes that
+this contract actually relies on, and each of them silently corrupts proposal
+bookkeeping rather than raising if a runner upgrade changes one:
 
 - `TreeMap[str, DynArray[str]]` accepts a plain Python list on assignment
-  (`self.violations[pid] = [...]`) and supports `.append()` afterwards.
-- A missing key is **absent**, not empty: `key in self.map` before iterating,
-  `.get(key, default)` before reading.
-- `gl.storage.inmem_allocate(DynArray[str])` raises; it needs an explicit empty
-  list, `gl.storage.inmem_allocate(DynArray[str], [])`.
+  (`self.proposal_violations[pid] = [...]`), and `.append()` on the nested value
+  works afterwards.
+- The default passed to `.get(key, default)` is honoured. The contract never writes
+  `if key in self.tree`, so that default is the only membership test it has: an
+  absent key must read as zero, not raise.
+- An indexed write `self.tree[key] = value` creates the entry when `key` is new.
+
+The first and third are asserted through the contract itself, by tests in
+`tests/test_fideicommis.py` named `test_nested_dynarray_*`,
+`test_a_nested_list_is_written_exactly_once` and
+`test_tremap_get_falls_back_to_zero_for_an_unknown_address`. That is deliberate.
+They used to be asserted against a separate fixture contract, which was worse: a
+test that pins a behaviour of a proxy only proves the proxy still agrees with
+itself. Asserting through `Fideicommis` puts the failure in a test of the code
+that relies on the behaviour, so the stack trace names the real line.
+
+Two behaviours the fixture also pinned are **not** depended on and are no longer
+asserted anywhere: `key in self.tree` membership, and
+`gl.storage.inmem_allocate(DynArray[str], [])`. Neither appears in the contract.
+Asserting them would block a runner upgrade for a code path this project never
+executes.
 
 `Proposal` therefore holds only scalars, and the variable-length parts live in
 contract-level `TreeMap[str, DynArray[str]]` fields.

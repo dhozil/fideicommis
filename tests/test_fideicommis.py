@@ -1547,3 +1547,84 @@ def test_snapshot_restores_full_state(warp, direct_vm, direct_deploy, direct_own
     direct_vm.revert(snapshot)
     assert org.get_proposal_count() == 0
     assert json.loads(org.get_policy())["burn_per_cycle"] == 0
+
+
+# --- storage semantics the contract's bookkeeping depends on -----------------
+#
+# These used to live in a separate fixture contract, contracts/storage_semantics.py,
+# which asserted the same SDK behaviours against a toy TreeMap. They are here
+# instead, because a test that pins a behaviour of a proxy only proves the proxy
+# still agrees with itself. Asserting them through Fideicommis means the behaviour
+# is pinned where it is actually used: if a GenVM upgrade changes how a nested
+# DynArray or a TreeMap default behaves, the failure appears in a test of the
+# contract that relies on it, and the stack trace names the real code.
+#
+# What a runner upgrade would otherwise do: not raise. Proposal records would
+# keep working and quietly lose the approver and violation lists, which is the one
+# class of corruption this project cannot detect after the fact.
+
+
+def test_nested_dynarray_takes_a_plain_list_and_survives_the_round_trip(warp, direct_vm, direct_deploy, direct_owner):
+    """A TreeMap[str, DynArray[str]] field accepts a list literal on assignment.
+
+    The violations are built as a list comprehension and handed straight to the
+    field. If that stopped working, every non-compliant proposal would fail at
+    assessment time rather than at deploy time, which is much harder to trace.
+    """
+    org = build(direct_vm, direct_deploy, direct_owner)
+    bootstrap(org, direct_vm)
+    proposal_id = org.submit_proposal("t", "b", "GRANT", GEN, "0x" + "11" * 20)
+    assert json.loads(org.get_proposal_audit(proposal_id))["violations"] == []
+
+    mock_assess(direct_vm, ASSESS_NON_COMPLIANT)
+    org.assess_proposal(proposal_id)
+    audit = json.loads(org.get_proposal_audit(proposal_id))
+    assert audit["violations"] == ASSESS_NON_COMPLIANT["violations"]
+
+
+def test_a_nested_list_is_written_exactly_once(warp, direct_vm, direct_deploy, direct_owner):
+    """Reassessment is refused, so a nested list is only ever assigned at creation.
+
+    This started out as a test of whether reassigning a TreeMap[str, DynArray[str]]
+    replaces the list or extends it. It cannot be written, and the reason is better
+    than the test would have been: assess_proposal raises "was already assessed" before
+    it touches the field. The question of replace-versus-append is unreachable through
+    the public API, so no runner upgrade can change the answer.
+    """
+    org = build(direct_vm, direct_deploy, direct_owner)
+    bootstrap(org, direct_vm)
+    proposal_id = org.submit_proposal("t", "b", "GRANT", GEN, "0x" + "11" * 20)
+
+    mock_assess(direct_vm, ASSESS_NON_COMPLIANT)
+    org.assess_proposal(proposal_id)
+
+    with direct_vm.expect_revert("was already assessed"):
+        org.assess_proposal(proposal_id)
+
+    assert json.loads(org.get_proposal_audit(proposal_id))["violations"] == ASSESS_NON_COMPLIANT["violations"]
+
+
+def test_tremap_get_falls_back_to_zero_for_an_unknown_address(warp, direct_vm, direct_deploy, direct_owner, direct_bob):
+    """`if k in self.tree` appears nowhere in the contract, so the default passed
+    to .get is the only membership test it has.
+
+    cast_vote reads a stranger's shares out of member_shares. The revert message is
+    "sender is not a member", which means the lookup returned zero and failed the
+    weight comparison. If a runner ever stopped honouring the default, that read
+    would raise instead of scoring zero, and every non-member's vote attempt would
+    crash the contract rather than being refused: a denial of service on the vote
+    path, and not a wrong number.
+    """
+    org = build(direct_vm, direct_deploy, direct_owner)
+    bootstrap(org, direct_vm)
+    proposal_id = compliant_proposal(org, direct_vm)
+
+    with direct_vm.prank(hx(direct_bob)):
+        with direct_vm.expect_revert("sender is not a member"):
+            org.cast_vote(proposal_id, True)
+
+    # get_members reads the same field with the same default. Addresses come back
+    # EIP-55 checksummed, so the comparison is on case rather than on the raw string.
+    members = json.loads(org.get_members())
+    assert [m["address"].lower() for m in members] == [hx(direct_owner).lower()]
+    assert members[0]["shares"] == 10000

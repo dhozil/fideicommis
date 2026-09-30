@@ -31,9 +31,6 @@ jobs:
       - name: genvm-lint (Fideicommis)
         run: genvm-lint check contracts/fideicommis.py
 
-      - name: genvm-lint (storage semantics fixture)
-        run: genvm-lint check contracts/storage_semantics.py
-
       - name: no floats in consensus
         run: python -m pytest tests/test_no_float.py -v
 

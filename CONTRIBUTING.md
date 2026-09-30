@@ -7,7 +7,7 @@ were removed, so contributions that change a guard need to change a test with it
 
 ```bash
 pip install -e ".[dev]"
-python -m pytest -q          # 121 passed, 8 skipped, no network, no model calls
+python -m pytest -q          # 114 passed, 8 skipped, no network, no model calls
 ```
 
 The skips are the integration tests. They skip themselves when no node is

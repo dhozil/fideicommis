@@ -31,8 +31,9 @@ touches one needs a test that fails without it.
 2. **No float division, anywhere.** `tests/test_no_float.py` inventories every
    division in the contract and fails on a float one. A float in
    consensus-executed code crashes the VM instead of returning a wrong number.
-3. **The runner stays pinned.** Every contract file carries the `Depends` header
-   for `py-genlayer:1jb45aa8yn…`, and CI lints each file.
+3. **The runner stays pinned.** `contracts/fideicommis.py` carries the `Depends`
+   header for `py-genlayer:1jb45aa8yn…`, and CI lints it. There is exactly one
+   contract file; see "Why there is one contract".
 4. **A payout declares its conservation bucket.** `_pay` takes a bucket argument
    and rejects an unrecognised one *before* any value moves, so a new payout path
    cannot leave the estate without appearing in the identity
@@ -67,7 +68,7 @@ encodes:
 ## Layout
 
 ```
-contracts/     the contract, and a storage-semantics fixture
+contracts/     the contract. one file.
 tests/         direct mode (no network), plus integration for a real node
 scripts/       Studionet drivers, all sharing scripts/studionet.cjs
 web/           the audit reader
@@ -93,8 +94,8 @@ node deploy/deployScript.ts --dry-run
 The order that catches the most, because each layer has caught something the
 others did not:
 
-1. `python -m pytest -q` — 121 tests, including the adversarial capture sequence.
-2. `genvm-lint check` on both contract files.
+1. `python -m pytest -q` — 114 tests, including the adversarial capture sequence.
+2. `genvm-lint check` on the contract.
 3. A live run on Studionet. This is where the reader's throttling bug and the
    driver's hardcoded cycle count were found. Neither the test suite nor the
    linter reported either of them.
@@ -118,6 +119,22 @@ others did not:
 `CONTRIBUTING.md` has the same rules in checklist form. `SECURITY.md` states what
 the contract enforces without trust in the operator and, separately, what no
 contract can enforce — the second list is the more useful one.
+
+## Why there is one contract
+
+`contracts/` holds a single file. Two `gl.Contract` subclasses cannot coexist in
+one VM instance, in one file or imported from two modules, because
+`__known_contract__` is a single global in the SDK namespace, so a second one
+raises `only one contract is allowed`. Two contracts therefore means two
+deployments, and merging the classes into one was never available.
+
+Storage semantics used to be pinned by a fixture contract alongside it. That was
+the wrong shape: a test of a proxy proves the proxy still agrees with itself. The
+three behaviours `Fideicommis` actually depends on are now asserted through
+`Fideicommis` itself, in `tests/test_fideicommis.py`. Two others the fixture also
+pinned, `if key in self.tree` and `inmem_allocate`, appear nowhere in the contract
+and are no longer asserted, because asserting them would block a runner upgrade
+for a path this project never executes.
 
 ## Why there is no factory
 
