@@ -52,7 +52,7 @@ def fideicommis_path() -> str:
     return str(ROOT / "contracts" / "fideicommis.py")
 
 
-def deploy_org(account, treasury_atto=10 * GEN, evidence=""):
+def deploy_trust(account, treasury_atto=10 * GEN, evidence=""):
     contract = get_contract_factory(contract_file_path=fideicommis_path()).deploy(
         args=["Climate Fund", MISSION, CHARTER, account.address, evidence],
         account=account,
@@ -72,7 +72,7 @@ def submit_grant(org, account, amount=GEN, title=GRANT_TITLE, body=GRANT_BODY):
 
 
 def test_deploy_and_fund(default_account):
-    org = deploy_org(default_account)
+    org = deploy_trust(default_account)
     assert org.get_org_name().call() == "Climate Fund"
     assert org.get_status().call() == "ACTIVE"
     assert int(org.get_treasury().call()) == 10 * GEN
@@ -80,7 +80,7 @@ def test_deploy_and_fund(default_account):
 
 
 def test_policy_and_runway(default_account):
-    org = deploy_org(default_account)
+    org = deploy_trust(default_account)
     receipt = org.set_policy(args=[GEN, GEN // 100, 3600], account=default_account)
     assert tx_execution_succeeded(receipt)
     policy = json.loads(org.get_policy().call())
@@ -90,7 +90,7 @@ def test_policy_and_runway(default_account):
 
 
 def test_funding_reaches_the_treasury_only_with_value(default_account):
-    org = deploy_org(default_account, treasury_atto=0)
+    org = deploy_trust(default_account, treasury_atto=0)
     assert int(org.get_treasury().call()) == 0
     receipt = org.fund(args=[]).transact(value=3 * GEN, account=default_account)
     assert tx_execution_succeeded(receipt)
@@ -100,7 +100,7 @@ def test_funding_reaches_the_treasury_only_with_value(default_account):
 
 
 def test_malformed_proposal_is_rejected_deterministically(default_account):
-    org = deploy_org(default_account)
+    org = deploy_trust(default_account)
     assert tx_execution_succeeded(submit_grant(org, default_account, amount=GEN, body=""))
     assert json.loads(org.get_proposal(args=["p1"]).call())["kind"] == "GRANT"
     rejected = org.submit_proposal(
@@ -116,7 +116,7 @@ def test_evidence_urls_are_constitutional_not_operator_settable(default_account)
     rather than in the direct-mode suite, because the point is that the refusal
     survives a real validator committee and not just in-process.
     """
-    org = deploy_org(default_account)
+    org = deploy_trust(default_account)
     receipt = org.set_evidence_urls(args=["https://example.org/a"], account=default_account)
     assert not tx_execution_succeeded(receipt)
     assert json.loads(org.get_evidence_urls().call()) == []
@@ -124,7 +124,7 @@ def test_evidence_urls_are_constitutional_not_operator_settable(default_account)
 
 def test_membership_and_rulebook_are_not_operator_settable(default_account):
     """The other two removed operator powers, refused the same way."""
-    org = deploy_org(default_account)
+    org = deploy_trust(default_account)
     assert not tx_execution_succeeded(
         org.set_member_shares(args=["0x" + "22" * 20, 10000], account=default_account)
     )
@@ -134,7 +134,7 @@ def test_membership_and_rulebook_are_not_operator_settable(default_account):
 
 def test_set_policy_no_longer_accepts_quorum_or_ceiling(default_account):
     """The load-bearing step of the capture: it must not be a parameter at all."""
-    org = deploy_org(default_account)
+    org = deploy_trust(default_account)
     assert not tx_execution_succeeded(
         org.set_policy(args=[0, 0, 3600, 1, 10000], account=default_account)
     )
@@ -151,7 +151,7 @@ def test_a_constitutional_change_is_timelocked_through_real_consensus(default_ac
     Approved is not effective. The delay has to hold when a real committee is
     involved, which is the only place the timelock is genuinely adversarial.
     """
-    org = deploy_org(default_account)
+    org = deploy_trust(default_account)
     org.bootstrap_rules(args=[], account=default_account)
     org.submit_proposal(args=["Raise quorum", "QUORUM_BPS:8000", "GOVERNANCE", 0, ""], account=default_account)
     org.assess_proposal(args=["p1"], account=default_account)
@@ -167,7 +167,7 @@ def test_a_constitutional_change_is_timelocked_through_real_consensus(default_ac
 @pytest.mark.slow
 def test_charter_rulebook_settles_by_consensus(default_account):
     """bootstrap_rules is the first real equivalence check: leader plus validators."""
-    org = deploy_org(default_account, treasury_atto=0)
+    org = deploy_trust(default_account, treasury_atto=0)
     receipt = org.bootstrap_rules(args=[], account=default_account)
     assert tx_execution_succeeded(receipt)
     rules = json.loads(org.get_charter_rules().call())
@@ -178,7 +178,7 @@ def test_charter_rulebook_settles_by_consensus(default_account):
 
 @pytest.mark.slow
 def test_proposal_assessment_settles_by_consensus(default_account):
-    org = deploy_org(default_account)
+    org = deploy_trust(default_account)
     assert tx_execution_succeeded(org.bootstrap_rules(args=[], account=default_account))
     assert tx_execution_succeeded(submit_grant(org, default_account))
     assert tx_execution_succeeded(org.assess_proposal(args=["p1"], account=default_account))
@@ -189,7 +189,7 @@ def test_proposal_assessment_settles_by_consensus(default_account):
 
 @pytest.mark.slow
 def test_grant_is_paid_after_quorum(default_account):
-    org = deploy_org(default_account)
+    org = deploy_trust(default_account)
     assert tx_execution_succeeded(org.bootstrap_rules(args=[], account=default_account))
     assert tx_execution_succeeded(submit_grant(org, default_account))
     assert tx_execution_succeeded(org.assess_proposal(args=["p1"], account=default_account))
@@ -204,7 +204,7 @@ def test_grant_is_paid_after_quorum(default_account):
 @pytest.mark.slow
 def test_advance_cycle_settles_and_pays_the_keeper(default_account, accounts):
     keeper = accounts[1]
-    org = deploy_org(default_account)
+    org = deploy_trust(default_account)
     assert tx_execution_succeeded(
         org.set_policy(args=[GEN, GEN // 100, 60], account=default_account)
     )
@@ -222,7 +222,7 @@ def test_advance_cycle_settles_and_pays_the_keeper(default_account, accounts):
 
 @pytest.mark.slow
 def test_charter_amendment_round_trip(default_account):
-    org = deploy_org(default_account)
+    org = deploy_trust(default_account)
     assert tx_execution_succeeded(org.bootstrap_rules(args=[], account=default_account))
     assert tx_execution_succeeded(
         org.submit_proposal(

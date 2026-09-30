@@ -31,9 +31,6 @@ jobs:
       - name: genvm-lint (Fideicommis)
         run: genvm-lint check contracts/fideicommis.py
 
-      - name: genvm-lint (FideicommisFactory)
-        run: genvm-lint check contracts/fideicommis_factory.py
-
       - name: genvm-lint (storage semantics fixture)
         run: genvm-lint check contracts/storage_semantics.py
 
@@ -54,31 +51,46 @@ jobs:
   reader:
     name: audit reader
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: web
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
           cache: npm
-          cache-dependency-path: web/package-lock.json
+          # The repo is an npm workspace, so there is exactly one lockfile and it
+          # lives at the root. Caching web/package-lock.json here silently fell
+          # back to no cache the moment the workspace was introduced, and the
+          # install ran un-cached rather than failing, which is the worse outcome.
+          cache-dependency-path: package-lock.json
+
+      # Install from the root, not from web/. Running npm ci inside a workspace
+      # member installs only that member's own dependencies and skips the
+      # hoisting that makes `next run build` work from here.
       - run: npm ci
+
       - name: typecheck
-        run: npx tsc --noEmit
+        run: npm run typecheck
+        working-directory: web
+
       - name: build
         run: npm run build
+        working-directory: web
         env:
           NEXT_TELEMETRY_DISABLED: "1"
+
+      # Both checks read from web/. They are the last two steps on purpose: the
+      # bundle check is only meaningful once a build has produced .next.
       - name: the chain reader must not reach a client bundle
+        working-directory: web
         run: |
           if grep -rlE "gen_call|createClient|genlayer-js" .next/static/chunks 2>/dev/null; then
             echo "::error::GenLayer client code found in a client bundle"
             exit 1
           fi
           echo "ok: no chain client code in any client chunk"
+
       - name: no key material in the app
+        working-directory: web
         run: |
           # The wallet module legitimately talks about keys it does not hold, so
           # the rule is narrower than a bare grep: nothing may read key material

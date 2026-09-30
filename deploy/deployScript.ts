@@ -11,7 +11,6 @@
  * Usage:
  *   node deploy/deployScript.ts                       # deploy one trust and read it back
  *   node deploy/deployScript.ts --name "Open Archive Trust"
- *   node deploy/deployScript.ts --deployer 0xabc…      # provision an existing factory
  *   node deploy/deployScript.ts --dry-run             # print what it would do
  *
  * Keys come from the environment, never from a file in the repository:

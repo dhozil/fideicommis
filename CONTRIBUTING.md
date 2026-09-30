@@ -7,7 +7,7 @@ were removed, so contributions that change a guard need to change a test with it
 
 ```bash
 pip install -e ".[dev]"
-python -m pytest -q          # 133 passed, 10 skipped, no network, no model calls
+python -m pytest -q          # 121 passed, 8 skipped, no network, no model calls
 ```
 
 The skips are the integration tests. They skip themselves when no node is
@@ -18,15 +18,12 @@ test is not a passing test, and the README says so.
 
 ```bash
 genvm-lint check contracts/fideicommis.py
-genvm-lint check contracts/fideicommis_factory.py
 python -m pytest -q
 for f in scripts/*.cjs; do node --check "$f"; done
 cd web && npx tsc --noEmit && npm run build
 ```
 
-CI runs all four. It also asserts that the factory's `ORG_CONTRACT_MARKER` string
-is present in the contract, because renaming the class without the marker is a
-break that no local test would notice.
+CI runs all four.
 
 ## Rules the contract has to keep
 
@@ -41,8 +38,8 @@ claims to be.
    division in the contract and fails on a float one. A float reaching
    consensus-executed code crashes the VM rather than returning a wrong number.
 
-3. **The runner stays pinned.** `# { "Depends": "py-genlayer:1jb45aa8yn…" }`. The
-   factory refuses a template without it.
+3. **The runner stays pinned.** Every contract file carries the `Depends`
+   header for `py-genlayer:1jb45aa8yn…`, and CI lints each one.
 
 4. **A payout declares its bucket.** `_pay` takes a bucket argument and refuses
    one it does not recognise, before moving any value. A new payout path has to

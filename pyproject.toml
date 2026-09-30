@@ -1,6 +1,6 @@
 [project]
 name = "fideicommis"
-version = "0.4.0"
+version = "0.6.0"
 description = "An autonomous trust on GenLayer: an estate entrusted in perpetuity, administered under its own charter, judged by a committee of validators."
 readme = "README.md"
 requires-python = ">=3.11"

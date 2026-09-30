@@ -159,8 +159,12 @@ pip install -e ".[dev]"
 python -m pytest -v
 for f in scripts/*.cjs; do node --check "$f"; done
 
-# the reader
-cd web && npm ci && npm run build && npx tsc --noEmit
+# the reader. The repo is an npm workspace, so install from the root: running
+# npm ci inside web/ installs only that member and skips the hoisting that lets
+# `next build` find react at all.
+npm ci
+npm run typecheck --workspace web
+npm run build --workspace web
 ```
 
 Expect `121 passed, 8 skipped`. The skips are the integration tests, which skip
@@ -386,7 +390,7 @@ consensus rule may depend on, and a true-division `/` turns an integer
 calculation into a float one that can crash the VM or make a leader and its
 validators disagree on identical input.
 
-Both contracts contain **zero** `/` operators. Every division is integer
+The contract contains **zero** `/` operators. Every division is integer
 division, and the complete inventory is eight sites, all of them audited:
 
 | Site | Expression | Denominator |
@@ -488,8 +492,7 @@ the committee chose FUND and then SETTLE.
 Also verified live, on earlier trusts: the funding loop with per-cycle
 burn and keeper reimbursement, dormancy when the treasury empties, revival by
 `fund()`, the rejection path where a surveillance grant is blocked from voting
-and payment, the full grant and settlement path driven by hand, and the entire
-factory path.
+and payment, and the full grant and settlement path driven by hand.
 
 ### The funding loop, drained to nothing and revived
 

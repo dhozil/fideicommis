@@ -17,7 +17,7 @@
  *   AMEND   the fideicommis rewrites its own charter, but only through the
  *           ordinary path, assessed against the charter currently in force.
  *
- * The fideicommis is deployed directly rather than through the factory, so the
+ * The fideicommis is deployed by whoever runs this, so the
  * keeper is the founder and holds all the shares from the start. Grants pay a
  * non-member beneficiary, so the money genuinely leaves the trust.
  *
