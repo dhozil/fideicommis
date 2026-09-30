@@ -1,0 +1,20 @@
+# Normalise line endings in the repository, not just in the working copy.
+# Without this, git's core.autocrlf rewrites LF to CRLF on checkout on Windows
+# and every diff of a text file is noise. The contracts are deployed bytecode
+# source, so their bytes should be identical everywhere.
+* text=auto eol=lf
+
+*.py   text eol=lf
+*.js   text eol=lf
+*.cjs  text eol=lf
+*.css  text eol=lf
+*.html text eol=lf
+*.json text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.md   text eol=lf
+*.toml text eol=lf
+LICENSE text eol=lf
+
+*.png binary
+*.jpg binary

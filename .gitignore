@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+artifacts/
+.env
+.gltest_cache/
+fee-profile.json
+
+# Live-network driver state and secrets. The keeper key is a real account key on
+# a public testnet, so it must never be committed.
+scripts/*.address
+*.key

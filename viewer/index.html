@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fideicommis — audit</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="shell">
+
+  <header class="masthead">
+    <div>
+      <span class="fideicommis">Fideicommis</span>
+      <h1 id="name">&nbsp;</h1>
+      <div class="address" id="address">&nbsp;</div>
+    </div>
+    <div class="address" id="network">Studionet</div>
+  </header>
+
+  <form class="controls" id="form">
+    <div class="field">
+      <label for="trust">Trust address</label>
+      <input type="text" id="trust" name="trust" spellcheck="false" autocomplete="off">
+    </div>
+    <button type="submit" id="go">Read the record</button>
+  </form>
+
+  <div id="notice"></div>
+
+  <div class="columns">
+
+    <!-- the fixed instrument being examined -->
+    <aside class="instrument">
+      <section class="block">
+        <h2>Conservation</h2>
+        <div class="equation" id="equation">
+          <div class="terms" id="terms"></div>
+          <div class="balance">
+            <span class="lhs">Accounted for</span>
+            <span class="rhs" id="rhs">&nbsp;</span>
+          </div>
+          <div class="verdict-word" id="balanceVerdict">&nbsp;</div>
+        </div>
+        <div class="ledger" id="flowLedger" style="margin-top:16px"></div>
+      </section>
+
+      <section class="block">
+        <h2>Constitution</h2>
+        <div id="gauges"></div>
+        <div class="ledger" id="constitutionLedger" style="margin-top:14px"></div>
+      </section>
+
+      <section class="block">
+        <h2>Membership</h2>
+        <div class="ledger" id="members"></div>
+      </section>
+
+      <section class="block">
+        <h2>The rulebook it judges by</h2>
+        <ul class="rules" id="rules"></ul>
+      </section>
+
+      <section class="block">
+        <h2>Charter, as in force</h2>
+        <div class="deed">
+          <span class="version" id="charterVersion">&nbsp;</span>
+          <span id="charter">&nbsp;</span>
+        </div>
+      </section>
+    </aside>
+
+    <!-- the decisions, in the order they actually happened -->
+    <main class="decisions" id="decisions"></main>
+
+  </div>
+
+  <div class="colophon">
+    <span class="read-only">Read-only</span> &nbsp;This page never signs and never
+    writes. It calls the trust's own view methods and shows what the contract
+    says, so a claim made here can be checked by calling the same view yourself.
+    <div id="pacer" style="margin-top:8px"></div>
+  </div>
+
+</div>
+<script src="app.js"></script>
+</body>
+</html>

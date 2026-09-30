@@ -1,0 +1,59 @@
+[project]
+name = "fideicommis"
+version = "0.4.0"
+description = "An autonomous trust on GenLayer: an estate entrusted in perpetuity, administered under its own charter, judged by a committee of validators."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+keywords = ["genlayer", "intelligent-contract", "autonomous-trust", "fideicommis", "constitutional-design"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development :: Testing",
+]
+
+# genlayer-test brings the pytest plugin and the direct-mode harness.
+# genvm-linter is the official linter for the pinned GenVM runner and is what
+# CI gates on, so it is a hard dependency rather than a nice-to-have.
+dependencies = [
+  "genlayer-test>=0.29",
+  "genvm-linter>=0.11",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+  "ruff>=0.6",
+]
+
+[project.urls]
+Homepage = "https://docs.genlayer.com"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-m 'not slow'"
+markers = [
+  "direct: direct-mode test, runs contract code in-process with mocked web and LLM calls",
+  "slow: integration test that runs real consensus and real model calls",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = [
+  # The contract module is a GenVM entry point: genvm-linter owns its style, and
+  # two rules in particular would force changes the runtime does not allow.
+  "E501",  # line length is genvm-linter's business, not ruff's
+  "B008",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E402"]
+
+[tool.ruff.format]
+quote-style = "double"

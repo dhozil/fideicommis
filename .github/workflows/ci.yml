@@ -1,0 +1,72 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The gate that matters: the official linter for the pinned GenVM runner, plus
+  # the storage-semantics invariants the contract's correctness rests on.
+  check:
+    name: lint and direct-mode tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: genvm-lint (Fideicommis)
+        run: genvm-lint check contracts/fideicommis.py
+
+      - name: genvm-lint (FideicommisFactory)
+        run: genvm-lint check contracts/fideicommis_factory.py
+
+      - name: genvm-lint (storage semantics fixture)
+        run: genvm-lint check contracts/storage_semantics.py
+
+      - name: no floats in consensus
+        run: python -m pytest tests/test_no_float.py -v
+
+      - name: full direct-mode suite
+        run: python -m pytest -v
+
+      - name: viewer and drivers parse
+        run: |
+          for f in scripts/*.cjs viewer/app.js; do node --check "$f"; done
+
+  # A cheap guard that the factory still recognises the template it is meant to
+  # provision. The marker is a literal in the factory and a class name in the
+  # contract; renaming one without the other is a silent break.
+  template-marker:
+    name: factory template marker matches the contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - name: assert the marker and the class agree
+        run: |
+          python - <<'PY'
+          import pathlib, re, sys
+          factory = pathlib.Path("contracts/fideicommis_factory.py").read_text()
+          contract = pathlib.Path("contracts/fideicommis.py").read_text()
+          marker = re.search(r'ORG_CONTRACT_MARKER\s*=\s*"([^"]+)"', factory).group(1)
+          if marker not in contract:
+              sys.exit(f"factory marker {marker!r} is not present in fideicommis.py")
+          print(f"ok: factory marker {marker!r} present")
+          PY
