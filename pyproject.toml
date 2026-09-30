@@ -31,6 +31,18 @@ dev = [
 [project.urls]
 Homepage = "https://docs.genlayer.com"
 
+# This repository is a contract, its tests and its tooling. It is not an
+# importable library: contracts/fideicommis.py is a GenVM entry point that must
+# never be installed as a module, and the direct-mode tests load it from its
+# path. Declaring the package list as empty is what lets `pip install -e .`
+# install the dependencies above and nothing else. Without this line
+# setuptools' flat-layout discovery fails outright, because it finds web/,
+# deploy/, contracts/ and node_modules/ at the top level and refuses to guess
+# which one is the package. It failed with "Multiple top-level packages
+# discovered", which is the loud version of the same problem.
+[tool.setuptools]
+packages = []
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-m 'not slow'"

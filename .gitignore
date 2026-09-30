@@ -6,6 +6,11 @@ artifacts/
 .gltest_cache/
 fee-profile.json
 
+# Metadata pip writes when the project is installed editable. It describes the
+# packaging, not the contract, and it names no package because pyproject
+# declares packages = [].
+*.egg-info/
+
 # Node, hoisted to the workspace root by npm.
 node_modules/
 .next/

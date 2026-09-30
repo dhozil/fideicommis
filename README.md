@@ -257,7 +257,7 @@ them.
 ## Install and test
 
 ```bash
-pip install -r requirements.txt
+pip install -e ".[dev]"   # the one dependency list is pyproject.toml
 
 # static checks
 genvm-lint check contracts/fideicommis.py
