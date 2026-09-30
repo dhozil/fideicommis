@@ -142,7 +142,9 @@ scripts/
   run_mission_loop.cjs           funding, burn, keeper reimbursement, dormancy, revival
   run_proposal_flow.cjs         rejection path, then the full money path
   run_factory_check.cjs         template provisioning, trust creation, cross-contract calls
-web/                           the audit reader: Next.js, read-only, holds no key
+web/                           the audit reader: Next.js, optional wallet, holds no key
+deploy/deployScript.ts         one command: factory, template, a trust, then read it back
+tools/run_glsim_windows.py     the Windows glsim workarounds
   run_fideicommis.cjs         the three core claims: acts by itself, pays a non member, amends itself
 tests/
   test_fideicommis.py         direct-mode tests, millisecond feedback
@@ -908,8 +910,7 @@ Every claim above can be checked against the contract's own view methods. There 
 a reader for that, and it signs nothing.
 
 ```bash
-cd web
-npm install
+npm install            # workspaces, from the repo root
 npm run dev            # http://localhost:3000
 ```
 

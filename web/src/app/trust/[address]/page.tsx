@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AddressForm } from "@/components/AddressForm";
+import { KeeperActions } from "@/components/KeeperActions";
+import { WalletPanel } from "@/components/WalletPanel";
 import { Conservation } from "@/components/Conservation";
 import { ConstitutionGauges } from "@/components/ConstitutionGauges";
 import { DecisionList } from "@/components/Decision";
@@ -37,8 +39,11 @@ export default async function TrustPage({ params }: Params) {
           <div className="addr">{record.address}</div>
         </div>
         <div className="right">
+          <div className="wallet">
+            <WalletPanel />
+          </div>
           <Link href="/">Read another</Link>
-          <div>Studionet · read-only</div>
+          <div>Studionet</div>
         </div>
       </header>
 
@@ -68,6 +73,7 @@ export default async function TrustPage({ params }: Params) {
           <Conservation flow={record.flow} />
           <ConstitutionGauges state={record.state} />
           <ConstitutionFacts record={record} />
+          <KeeperActions trust={record.address} treasury={gen(record.treasury)} />
           <Membership
             members={record.members}
             totalShares={record.state.total_shares}

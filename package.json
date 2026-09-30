@@ -1,0 +1,21 @@
+{
+  "name": "fideicommis",
+  "version": "0.5.0",
+  "private": true,
+  "description": "An autonomous trust on GenLayer, and the reader that audits it.",
+  "workspaces": [
+    "web"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace web",
+    "build": "npm run build --workspace web",
+    "start": "npm run start --workspace web",
+    "typecheck": "npm run typecheck --workspace web",
+    "lint": "npm run lint --workspace web",
+    "test:integration": "python -m pytest tests/integration -v",
+    "glsim": "python tools/run_glsim_windows.py --port 4000 --validators 5 --no-browser"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

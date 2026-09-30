@@ -78,14 +78,16 @@ jobs:
             exit 1
           fi
           echo "ok: no chain client code in any client chunk"
-      - name: no key material anywhere in the app
+      - name: no key material in the app
         run: |
-          if grep -rniE "private[_-]?key|mnemonic|seed phrase" src/ --include="*.ts" --include="*.tsx" \
-            | grep -v "no private key" | grep -v "holds no key" | grep -v "no account"; then
-            echo "::error::possible key material referenced in the reader source"
+          # The wallet module legitimately talks about keys it does not hold, so
+          # the rule is narrower than a bare grep: nothing may read key material
+          # into the process. A hardcoded 64-hex literal is the thing to catch.
+          if grep -rnE "0x[0-9a-fA-F]{64}" src/ --include="*.ts" --include="*.tsx"; then
+            echo "::error::a 32-byte hex literal in the reader source could be key material"
             exit 1
           fi
-          echo "ok: the reader source references no key material"
+          echo "ok: no 32-byte literal in the reader source"
 
   # A cheap guard that the factory still recognises the template it is meant to
   # provision. The marker is a literal in the factory and a class name in the

@@ -6,6 +6,13 @@ artifacts/
 .gltest_cache/
 fee-profile.json
 
+# Node, hoisted to the workspace root by npm.
+node_modules/
+.next/
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+
 # Live-network driver state and secrets. The keeper key is a real account key on
 # a public testnet, so it must never be committed.
 scripts/*.address
