@@ -10,6 +10,47 @@ The public interface that matters is the set of `get_*` view methods, the
 is a major version, because deployed trusts keep their state and the layout is
 positional.
 
+## [0.5.0] — the audit reader, as a full-stack application
+
+The reader that makes "a trust that cannot explain a decision cannot be audited"
+checkable by clicking, rather than by reading a document.
+
+### Added
+
+- `web/`: Next.js 16, App Router, React 19, TypeScript strict with
+  `noUncheckedIndexedAccess`. Server-rendered audit records at `/trust/[address]`,
+  `force-dynamic` so a record is never baked into a build.
+- The chain client (`web/src/lib/genlayer.ts`) is built with **no account**,
+  because reads do not need one, and `server-only` on that module makes importing
+  it into a client component a build error rather than a review comment.
+- A degraded read path: a view that fails is shown as empty and named, not
+  guessed and not fatal. A trust that has not derived its rulebook yet is a normal
+  state, so the page still renders everything else.
+- `/api/health`, which reports whether the GenLayer node is answering and whether
+  this reader is rate-limited, alongside `readOnly`, `signs: false` and
+  `holdsKeys: false` as assertions rather than claims.
+- CI job for the reader: typecheck, build, and two greps — that no chain client
+  code reached a client bundle, and that no key material is referenced in the app
+  source.
+
+### Changed
+
+- The static `viewer/` remains as a dependency-free alternative and as the
+  simplest way to read a trust with one `node` command. The Next app supersedes
+  it as the primary reader.
+- `set_policy` docstring and README examples now show three arguments, matching
+  the contract. The earlier five-argument form appeared in the CLI walkthrough
+  and would have failed on a call.
+
+### Fixed
+
+- An address with no contract behind it threw a raw SDK error and produced a 500.
+  It is now a 404 that explains what a Fideicommis answers, because a wrong
+  address is a user error and not a server fault.
+- A rate-limited node produced a bare 500 instead of the one instruction that
+  actually helps. The error boundary now says the limit is 30 reads a minute and
+  offers a retry.
+
 ## [0.4.0] — the operator could take the whole estate
 
 The capture path closed, and the constitution became checkable from outside.

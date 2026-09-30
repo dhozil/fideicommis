@@ -1,0 +1,429 @@
+/*
+ * Fideicommis audit reader.
+ *
+ * An instrument for checking figures, not a page to be liked. The subject is a
+ * perpetual fiduciary trust whose decisions are reached by a validator
+ * committee, so the material reference is the assay ledger and the attestation
+ * chop. Cold engraved-slate ground, brass for anything the trust attests to,
+ * vermilion reserved for refusal. Serif appears only where the content is
+ * genuinely legal prose (the charter) or a genuine proof obligation (the
+ * conservation equation); everything else is monospace, because attoGEN integers
+ * are the substance of this thing.
+ *
+ * One rule applied everywhere: every hairline marks a field boundary or a ledger
+ * row. No border-radius, so the one element permitted to break the grid is the
+ * verdict chop.
+ */
+
+:root {
+  --ground: #0e1418;
+  --surface: #151d23;
+  --raised: #1b252c;
+  --rule: #2b3944;
+  --rule-strong: #46596a;
+  --ink: #e9e5db;
+  --ink-dim: #8593a0;
+  --ink-faint: #5a6874;
+  --brass: #c9a227;
+  --brass-dim: #8a6f1c;
+  --vermilion: #c4462f;
+  --vermilion-dim: #8c2f1f;
+  --assay: #4a7c6f;
+  --deed: "Iowan Old Style", "Palatino Linotype", Palatino, Charter, Georgia, serif;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  --gap: 22px;
+}
+
+* { box-sizing: border-box; }
+
+html, body { margin: 0; padding: 0; }
+
+body {
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.55;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Faint engraved grid, like the guilloche on a bond certificate. Almost
+   invisible; it exists so large dark areas read as a surface and not a void. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: linear-gradient(var(--rule) 1px, transparent 1px), linear-gradient(90deg, var(--rule) 1px, transparent 1px);
+  background-size: 64px 64px;
+  opacity: 0.12;
+}
+
+a { color: var(--brass); }
+
+:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+  border-radius: 0;
+}
+
+.shell { position: relative; z-index: 1; max-width: 1280px; margin: 0 auto; padding: 0 28px 96px; }
+.shell > *, .columns > * { min-width: 0; }
+
+@media (max-width: 900px) {
+  .shell { padding: 0 18px 64px; }
+}
+
+/* ------------------------------------------------------------------ masthead */
+
+.masthead {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--gap);
+  flex-wrap: wrap;
+  padding: 28px 0 16px;
+  border-bottom: 2px solid var(--rule-strong);
+}
+
+.eyebrow {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--brass);
+  margin-bottom: 6px;
+}
+
+.masthead h1 {
+  font-family: var(--deed);
+  font-size: 26px;
+  font-weight: 400;
+  margin: 0;
+  letter-spacing: 0.01em;
+}
+
+.masthead .addr { color: var(--ink-faint); font-size: 11px; margin-top: 5px; word-break: break-all; }
+.masthead .right { color: var(--ink-faint); font-size: 11px; text-align: right; }
+.masthead .right a { text-decoration: none; border-bottom: 1px solid var(--brass-dim); }
+.masthead .right a:hover { color: var(--brass); border-bottom-color: var(--brass); }
+
+/* ------------------------------------------------------------------- notices */
+
+.notice {
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--ink-faint);
+  background: var(--surface);
+  padding: 11px 15px;
+  margin: 18px 0 var(--gap);
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+
+.notice.bad { border-left-color: var(--vermilion); color: #e5b7ab; }
+.notice.good { border-left-color: var(--assay); color: #a9c9c0; }
+.notice code { color: var(--brass); }
+
+/* ------------------------------------------------------------------ sections */
+
+.block { margin-bottom: 30px; }
+
+.block > h2 {
+  font-size: 9.5px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  font-weight: 400;
+  margin: 0 0 11px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.columns { display: grid; grid-template-columns: minmax(0, 392px) minmax(0, 1fr); gap: 36px; align-items: start; }
+
+@media (max-width: 960px) {
+  .columns { grid-template-columns: minmax(0, 1fr); }
+}
+
+.instrument { position: sticky; top: 20px; }
+
+@media (max-width: 960px) { .instrument { position: static; } }
+
+/* -------------------------------------------------------------- ledger rows */
+
+.ledger { display: flex; flex-direction: column; }
+
+.ledger-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 14px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--rule);
+  min-width: 0;
+}
+
+.ledger-row:last-child { border-bottom: 0; }
+.ledger-row dt { color: var(--ink-dim); font-size: 11.5px; min-width: 0; overflow-wrap: anywhere; }
+.ledger-row dd { margin: 0; color: var(--ink); font-size: 12px; text-align: right; flex: 0 0 auto; }
+.ledger-row dd.accent { color: var(--brass); }
+
+.ledger-spaced { margin-top: 16px; }
+.gauge + .ledger-spaced { margin-top: 14px; }
+
+/* ------------------------------------------- signature: the live equation */
+
+/* The conservation terms live in the narrow instrument rail, not across the full
+   width, so three per row is what actually fits. Six columns in a 392px rail
+   truncated the longer labels, which is the opposite of what a ledger wants. */
+.equation .terms { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 0; }
+
+.equation .term { display: flex; flex-direction: column; min-width: 0; }
+
+.equation .term .label {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.equation .term .value { font-size: 13.5px; color: var(--ink); }
+.equation .term.zero .value { color: var(--ink-faint); }
+
+.equation .balance {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 13px;
+  padding-top: 11px;
+  border-top: 2px solid var(--brass);
+  min-width: 0;
+}
+
+.equation.broken .balance { border-top-color: var(--vermilion); }
+.equation .balance .lhs { font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-faint); }
+.equation .balance .rhs { font-size: 14px; color: var(--brass); }
+.equation.broken .balance .rhs { color: var(--vermilion); }
+
+.equation .finding { margin-top: 8px; font-size: 10.5px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--assay); }
+.equation.broken .finding { color: var(--vermilion); }
+
+@media (max-width: 520px) {
+  .equation .terms { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 12px; }
+}
+
+/* ------------------------------------------------------ constitutional gauge */
+
+.gauge { margin-bottom: 17px; }
+
+.gauge .head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 7px; }
+.gauge .head .name { font-size: 11px; color: var(--ink-dim); }
+.gauge .head .now { font-size: 13px; color: var(--brass); min-width: 0; overflow-wrap: anywhere; }
+
+.gauge .track { position: relative; height: 22px; }
+.gauge .track .bed { position: absolute; top: 9px; left: 0; right: 0; height: 1px; background: var(--rule-strong); }
+
+/* Hard stops: hatched bars, instrument-like rather than icons, because the ends
+   of these tracks are the part a vote cannot move. */
+.gauge .stop { position: absolute; top: 2px; width: 2px; height: 15px; background: repeating-linear-gradient(180deg, var(--rule-strong) 0 2px, transparent 2px 4px); }
+.gauge .stop.floor { left: 0; }
+.gauge .stop.roof { right: 0; }
+.gauge .track .marker { position: absolute; top: 3px; width: 9px; height: 13px; margin-left: -4.5px; background: var(--brass); }
+
+.gauge .ends { display: flex; justify-content: space-between; gap: 10px; font-size: 9.5px; color: var(--ink-dim); margin-top: 2px; }
+
+/* ------------------------------------------------------------- the charter */
+
+.deed {
+  font-family: var(--deed);
+  font-size: 14px;
+  line-height: 1.62;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-top: 2px solid var(--brass-dim);
+  padding: 16px 18px;
+}
+
+.deed .version { display: block; font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 10px; }
+
+/* -------------------------------------------------------------- the rulebook */
+
+.rules { list-style: none; margin: 0; padding: 0; }
+
+.rules li {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 11px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--rule);
+  font-size: 11.5px;
+  color: var(--ink-dim);
+  overflow-wrap: anywhere;
+}
+
+.rules li:last-child { border-bottom: 0; }
+.rules .rid { color: var(--brass); }
+.rules li.cited { color: var(--ink); }
+.rules li.cited .rid { background: var(--vermilion); color: var(--ground); padding: 0 3px; }
+
+/* --------------------------------------------------------- the decision card */
+
+.decisions { display: flex; flex-direction: column; }
+
+.decision { border-bottom: 1px solid var(--rule-strong); padding: 20px 0 26px; }
+.decision:first-child { padding-top: 2px; }
+.decision:last-child { border-bottom: 0; padding-bottom: 4px; }
+
+.decision .head { display: flex; align-items: baseline; gap: 13px; flex-wrap: wrap; }
+.decision .pid { font-size: 10px; letter-spacing: 0.2em; color: var(--ink-faint); }
+
+.decision .kind {
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  border: 1px solid var(--rule-strong);
+  padding: 2px 7px;
+}
+
+.decision h3 { font-family: var(--deed); font-size: 18px; font-weight: 400; margin: 0; flex: 1 1 240px; }
+
+/* The one element allowed to break the grid. A judgment is an intervention in a
+   record, so it is struck across the rule rather than sitting politely in a cell. */
+.chop {
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  border: 2px solid var(--brass);
+  color: var(--brass);
+  padding: 5px 11px;
+  transform: rotate(-1.6deg);
+  display: inline-block;
+  margin: 14px 6px 12px 0;
+}
+
+.chop.bad { border-color: var(--vermilion); color: var(--vermilion); }
+.chop.pending { border-color: var(--ink-faint); color: var(--ink-faint); }
+
+/* The chain. Numbered because here the order is the content: money cannot leave
+   before it is proposed, judged and voted, and a settlement cannot happen before
+   the delivery is reviewed. A fixed six-column grid rather than a wrapping flex
+   row, so a step cannot fall onto a second line and read as a new phase. */
+.chain { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); border: 1px solid var(--rule); margin: 4px 0 15px; }
+
+@media (max-width: 760px) { .chain { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+.step { padding: 9px 11px; border-right: 1px solid var(--rule); min-width: 0; }
+.step:last-child { border-right: 0; }
+.step .n { font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-faint); }
+.step .what { font-size: 10.5px; color: var(--ink-faint); margin-top: 3px; line-height: 1.4; }
+.step .got { font-size: 12px; margin-top: 4px; overflow-wrap: anywhere; }
+.step.done .got { color: var(--assay); }
+.step.blocked .got { color: var(--vermilion); }
+.step.waiting .got { color: var(--ink-faint); }
+.step.inapplicable .got { color: var(--ink-faint); }
+
+.prose { font-size: 12px; color: var(--ink-dim); margin: 0 0 10px; }
+.prose strong { color: var(--ink); font-weight: 400; }
+
+.why-block { background: var(--surface); border: 1px solid var(--rule); border-left: 2px solid var(--rule-strong); padding: 12px 15px; margin: 12px 0 0; }
+.why-block .attribution { font-size: 9.5px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 7px; }
+.why-block p { margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--ink-dim); }
+
+/* Timelock: approved is not effective. */
+.hold { border: 1px dashed var(--vermilion-dim); padding: 10px 14px; margin: 12px 0 0; font-size: 11.5px; color: #e0a99c; }
+.hold .when { color: var(--ink-dim); display: block; margin-top: 5px; }
+
+/* ------------------------------------------------------------------ landing */
+
+.hero { padding: 46px 0 10px; max-width: 760px; }
+.hero-tight { padding-top: 8px; }
+.colophon-form { margin-top: 10px; max-width: 520px; }
+.hero h2 { font-family: var(--deed); font-size: 40px; font-weight: 400; line-height: 1.15; margin: 0 0 16px; letter-spacing: 0.005em; }
+.hero p { font-size: 13.5px; line-height: 1.7; color: var(--ink-dim); margin: 0 0 12px; max-width: 62ch; }
+.hero p strong { color: var(--ink); font-weight: 400; }
+
+.form { display: flex; gap: 10px; flex-wrap: wrap; margin: 24px 0 8px; }
+
+.form fieldset { border: 0; margin: 0; padding: 0; }
+.form-field { flex: 1 1 300px; min-width: 0; }
+.muted { color: var(--ink-faint); }
+
+.form label { display: block; font-size: 9.5px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 6px; }
+
+.form input {
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  color: var(--ink);
+  padding: 9px 11px;
+  width: 100%;
+  min-width: 0;
+  max-width: 480px;
+}
+
+.form button {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  background: var(--brass);
+  color: var(--ground);
+  border: 1px solid var(--brass);
+  padding: 9px 18px;
+  cursor: pointer;
+  align-self: flex-end;
+}
+
+.form button:hover { background: #dcb433; border-color: #dcb433; }
+
+.hint { font-size: 11px; color: var(--ink-faint); margin-top: 10px; }
+.hint a { color: var(--brass-dim); }
+
+/* --------------------------------------------------------------- colophon */
+
+.colophon { margin-top: 40px; padding-top: 18px; border-top: 1px solid var(--rule); font-size: 11px; color: var(--ink-faint); }
+.colophon .read-only { color: var(--brass); letter-spacing: 0.16em; text-transform: uppercase; font-size: 10px; }
+
+.empty { color: var(--ink-faint); font-size: 12px; padding: 12px 0; }
+.muted { color: var(--ink-faint); }
+
+/* Section heading for the decision column, same language as .block > h2 but for a
+   column that is not a titled panel. */
+.column-heading {
+  font-size: 9.5px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  font-weight: 400;
+  margin: 0 0 11px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  background: var(--brass);
+  color: var(--ground);
+  padding: 9px 14px;
+  z-index: 20;
+  font-size: 11px;
+}
+
+.skip-link:focus { left: 12px; top: 12px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}

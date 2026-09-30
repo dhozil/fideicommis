@@ -142,7 +142,8 @@ scripts/
   run_mission_loop.cjs           funding, burn, keeper reimbursement, dormancy, revival
   run_proposal_flow.cjs         rejection path, then the full money path
   run_factory_check.cjs         template provisioning, trust creation, cross-contract calls
-  serve_viewer.cjs              serves viewer/ and relays its view calls, paced
+  serve_viewer.cjs              a dependency-free relay, if you would rather not run Next
+web/                           the audit reader: Next.js, read-only, holds no key
   run_fideicommis.cjs         the three core claims: acts by itself, pays a non member, amends itself
 tests/
   test_fideicommis.py         direct-mode tests, millisecond feedback
@@ -901,60 +902,73 @@ notice.
 ## Read the record instead of trusting this document
 
 Every claim above can be checked against the contract's own view methods. There is
-a reader for that, and it signs nothing:
+a reader for that, and it signs nothing.
 
 ```bash
-node scripts/serve_viewer.cjs          # then open http://localhost:8080
+cd web
+npm install
+npm run dev            # http://localhost:3000
 ```
 
 ```
-viewer/index.html    the page
-viewer/app.css       the plate
-viewer/app.js        the reading logic
-scripts/serve_viewer.cjs  static server, and a paced relay to the node
+web/src/app/                 App Router: landing, /trust/[address], /api/health
+web/src/lib/genlayer.ts      the chain client: paced, keyless, read-only
+web/src/lib/trust.ts         one pass over a trust, degraded rather than broken
+web/src/components/          conservation, gauges, decision chain, panels
 ```
 
-Three files, no build step, no dependencies, no bundler, no account. It calls
-`get_*` and nothing else; there is no write path through the server and it loads
-no key beyond the faucet account the SDK requires to build a client.
+Next.js 16, React 19, TypeScript strict with `noUncheckedIndexedAccess`. It holds
+**no private key**: the chain client is built with no account, because reads do
+not need one, and `server-only` on that module turns importing it from a client
+component into a build error rather than a review comment. CI asserts both, and
+greps the built client chunks for chain code.
 
-It exists because the claim "a trust that cannot explain a decision cannot be
-audited" is only worth making if the explanation is reachable. So the page shows,
-per proposal: the chain (proposed → judged → voted → funded → reviewed →
+The reason it is a full-stack framework rather than a static page: the browser
+cannot reach the GenLayer node (CORS), and the node allows 30 reads a minute, so
+something server-side has to do the calling and the pacing. Doing it in the
+framework removes the separate relay process, and `force-dynamic` means a reader
+never sees a record baked into a build.
+
+It shows, per proposal: the chain (proposed → judged → voted → funded → reviewed →
 settled), the committee's own reasoning for the verdict and for the delivery, and
-the text that was actually voted on — all straight from `get_proposal_audit`.
-
-Two things it renders as diagrams rather than claims:
+the text that was actually voted on. Two things are diagrams rather than claims:
 
 - **Conservation.** The six buckets as a row of figures that must total the
-  inflow, under a brass rule. If it does not balance the rule turns vermilion and
-  the page says how much is unaccounted for.
-- **The constitutional gauges.** Quorum and the spend ceiling as positions on a
-  track between a hard stop and a hard stop, so "you cannot vote yourself past
-  this" is a position you can see rather than a sentence you have to trust.
+  inflow. If it does not balance, the rule turns vermilion and the page says how
+  much is unaccounted for.
+- **The constitutional gauges.** Quorum and the ceiling as positions between a
+  hard stop and a hard stop, so "you cannot vote yourself past this" is a position
+  you can see.
 
-It also cross-checks `get_constitution` against `get_constitutional_state` and
-warns if the deployed bytecode disagrees with itself about the hard limits.
+It cross-checks `get_constitution` against `get_constitutional_state` and refuses
+to present the figures if the deployed bytecode disagrees with itself.
 
-Two honest limits, both stated in the interface rather than hidden:
+Three honest limits, all stated in the interface rather than hidden:
 
 - **It cannot show how much of a timelock remains.** The contract records when
   quorum was reached but does not expose that timestamp as a view. The page says
   so and points at `get_proposal_audit` plus the block time of the vote.
-- **Quorum feasibility is inferred, not read.** The contract does not expose who
-  approved a proposal, so when one member holds at least the quorum share the
-  page can say a single approval was sufficient, and where that does not hold it
-  says nothing rather than guess.
+- **Quorum feasibility is inferred, not read.** Where a single member holds at
+  least the quorum share, one approval was sufficient; where that does not hold it
+  says nothing rather than guessing.
+- **A read that fails is shown as empty, not guessed.** A trust that has not
+  derived its rulebook yet is a normal state, so the page degrades per call and
+  names which one failed rather than refusing to render.
 
-### The reader found a real flaw in itself
+### A reader that reported itself broken
 
-The first working version fired all sixteen view calls at once. That looks
-efficient and it is exactly what got the reader throttled: Studionet's limiter
-answers the overflow with an **HTML page**, which no JSON client can parse, so a
-busy node presented as a broken trust. It now reads one call at a time with the
-count shown, and when the node answers with a page the reader says so in words
-("it is rate-limiting this IP, wait about a minute") instead of dumping markup at
-an auditor.
+The first version of the static reader fired sixteen view calls at once. That
+looks efficient and it is exactly what got it throttled: the limiter answers the
+overflow with an **HTML page**, which no JSON client can parse, so a busy node
+presented as a broken trust. It reads one call at a time now, the queue is
+serialised so two readers cannot outrun the limit, and when the node does answer
+with a page the reader says so in words.
+
+The same class of bug appeared in the Next version: an address with no contract
+behind it threw a raw SDK error and produced a 500, where the honest answer is a
+404 that explains what a Fideicommis answers. Both the not-found page and the
+error boundary are now written for the two ways this actually fails, rather than
+for the one that is easy to imagine.
 
 ## A charter can deadlock its own amendment
 

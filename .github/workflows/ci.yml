@@ -47,6 +47,47 @@ jobs:
         run: |
           for f in scripts/*.cjs viewer/app.js; do node --check "$f"; done
 
+  # The contract is the submission. The reader is checked too, but on its own
+  # terms: it typechecks, builds, and refuses to leak chain code into a client
+  # bundle. It is not run against a live node here, because a CI runner sharing
+  # an IP would spend the public node's 30-reads-a-minute budget and every other
+  # job would be throttled by its presence.
+  reader:
+    name: audit reader
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - name: typecheck
+        run: npx tsc --noEmit
+      - name: build
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+      - name: the chain reader must not reach a client bundle
+        run: |
+          if grep -rlE "gen_call|createClient|genlayer-js" .next/static/chunks 2>/dev/null; then
+            echo "::error::GenLayer client code found in a client bundle"
+            exit 1
+          fi
+          echo "ok: no chain client code in any client chunk"
+      - name: no key material anywhere in the app
+        run: |
+          if grep -rniE "private[_-]?key|mnemonic|seed phrase" src/ --include="*.ts" --include="*.tsx" \
+            | grep -v "no private key" | grep -v "holds no key" | grep -v "no account"; then
+            echo "::error::possible key material referenced in the reader source"
+            exit 1
+          fi
+          echo "ok: the reader source references no key material"
+
   # A cheap guard that the factory still recognises the template it is meant to
   # provision. The marker is a literal in the factory and a class name in the
   # contract; renaming one without the other is a silent break.
