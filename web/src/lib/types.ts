@@ -135,3 +135,36 @@ export interface TrustRecord {
   /** Set when something could not be read, so the page can say which call failed. */
   degraded: string | null;
 }
+
+/**
+ * The three-call read the landing page and the directory use.
+ *
+ * It lives here rather than beside the function that produces it, because a client
+ * component needs the type and must not import the module that holds the chain
+ * client. The server-only boundary is on the module, not on the shape.
+ */
+export interface FeaturedTrust {
+  address: string;
+  name: string;
+  status: string;
+  treasury: string;
+  runway: number;
+  charterVersion: number;
+  cycle: number;
+  flow: LifetimeFlow | null;
+  /** False when the node could not be read. The page says so rather than guessing. */
+  reachable: boolean;
+}
+
+/**
+ * One entry in the trust directory.
+ *
+ * The purpose and the note are written by whoever added the entry. The address is a
+ * starting point, not a claim: every figure shown for it is read live from the
+ * contract, so a stale entry shows as stale rather than being repeated as fact.
+ */
+export interface ListedTrust {
+  address: string;
+  purpose: string;
+  note: string;
+}

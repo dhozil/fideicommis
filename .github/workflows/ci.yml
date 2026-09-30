@@ -104,7 +104,7 @@ jobs:
 
       - name: the server-only reader is marked server-only
         run: |
-          for f in web/src/lib/genlayer.ts web/src/lib/trust.ts; do
+          for f in web/src/lib/genlayer.ts web/src/lib/trust.ts web/src/lib/featured.ts; do
             if ! grep -q '^import "server-only";' "$f"; then
               echo "::error::$f no longer imports server-only; the chain reader could be bundled into the browser"
               exit 1
@@ -118,7 +118,7 @@ jobs:
           # component importing a component that imports the reader, so the
           # transitive case is checked here: every file that reaches trust.ts or
           # genlayer.ts must itself be free of "use client".
-          for f in $(grep -rlE '@/lib/(trust|genlayer)|from "\./(trust|genlayer)"' web/src); do
+          for f in $(grep -rlE '@/lib/(trust|genlayer|featured)|from "\./(trust|genlayer|featured)"' web/src); do
             if head -1 "$f" | grep -q "use client"; then
               echo "::error::$f is a client component and reaches the server-only chain reader"
               exit 1

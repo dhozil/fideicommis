@@ -2,12 +2,12 @@ import { bps } from "@/lib/format";
 import type { ConstitutionalState } from "@/lib/types";
 
 /**
- * A position on a track between two hard stops.
+ * A limit drawn as a position on a track.
  *
- * The stops are hatched and the marker is solid, because the ends of these
- * tracks are the part a vote cannot move and the middle is the part it can. The
- * labels say what the ends mean rather than repeating the numbers, so a reader
- * learns the rule once instead of re-reading two figures.
+ * The ends of these tracks are the part a vote cannot move and the middle is the
+ * part it can, so the ends are labelled with what they mean rather than with their
+ * numbers, and the fill is green inside the range and red outside it. "You cannot
+ * vote yourself past this" is a position on a track, not a sentence to be trusted.
  */
 function Gauge({
   name,
@@ -32,27 +32,21 @@ function Gauge({
 
   return (
     <div className="gauge">
-      <div className="head">
-        <span className="name">{name}</span>
-        <span className="now">{format(now)}</span>
+      <div className="gauge-head">
+        <span>{name}</span>
+        <span className="value">{format(now)}</span>
       </div>
       <div
-        className="track"
+        className="gauge-track"
         role="meter"
         aria-valuemin={floor}
         aria-valuemax={roof}
         aria-valuenow={now}
         aria-label={`${name}: ${format(now)}, between ${floorText} and ${roofText}`}
       >
-        <span className="bed" />
-        <span className="stop floor" />
-        <span className="stop roof" />
-        <span
-          className="marker"
-          style={{ left: `${clamped}%`, background: outside ? "var(--vermilion)" : "var(--brass)" }}
-        />
+        <span className={`gauge-fill ${outside ? "over" : ""}`} style={{ width: `${clamped}%` }} />
       </div>
-      <div className="ends">
+      <div className="gauge-floor">
         <span>{floorText}</span>
         <span>{roofText}</span>
       </div>
@@ -60,22 +54,37 @@ function Gauge({
   );
 }
 
+/** A small two-column list of figures, used by several panels. */
+export function Facts({ rows }: { rows: [string, string | number][] }) {
+  return (
+    <table>
+      <tbody>
+        {rows.map(([label, value]) => (
+          <tr key={label}>
+            <td style={{ color: "var(--ink-dim)" }}>{label}</td>
+            <td className="num">{value}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 /**
- * The two numbers a vote can move, and the limits it cannot cross. Shown together
- * deliberately: "you cannot vote yourself past this" is a position on a track,
- * not a sentence to be trusted.
+ * The two numbers a vote can move and the limits it cannot cross, shown together on
+ * purpose. Below them, the parts of the constitution that are constants in the
+ * contract rather than values in storage.
  */
 export function ConstitutionGauges({ state }: { state: ConstitutionalState }) {
   return (
-    <section className="block">
-      <h2>Constitution</h2>
+    <>
       <Gauge
         name="Quorum"
         now={state.quorum_bps}
         floor={state.min_quorum_bps}
         roof={10000}
         format={(v) => `${bps(v)} of shares`}
-        floorText={`${bps(state.min_quorum_bps)} at the lowest`}
+        floorText={`${bps(state.min_quorum_bps)}, the lowest a vote may set`}
         roofText="every share"
       />
       <Gauge
@@ -85,22 +94,15 @@ export function ConstitutionGauges({ state }: { state: ConstitutionalState }) {
         roof={state.max_spend_ceiling_bps}
         format={(v) => `${bps(v)} of the treasury, one grant`}
         floorText="as low as you like"
-        roofText={`${bps(state.max_spend_ceiling_bps)} at the highest`}
+        roofText={`${bps(state.max_spend_ceiling_bps)}, the highest a vote may set`}
       />
-      <dl className="ledger ledger-spaced">
-        <div className="ledger-row">
-          <dt>Charter version</dt>
-          <dd>{state.charter_version}</dd>
-        </div>
-        <div className="ledger-row">
-          <dt>Delay on any change</dt>
-          <dd>{Math.round(state.amendment_delay / 3600)} h</dd>
-        </div>
-        <div className="ledger-row">
-          <dt>Total shares</dt>
-          <dd>{state.total_shares.toLocaleString("en-US")}</dd>
-        </div>
-      </dl>
-    </section>
+      <Facts
+        rows={[
+          ["Charter version", state.charter_version],
+          ["Delay on any change", `${Math.round(state.amendment_delay / 3600)} h`],
+          ["Total shares", state.total_shares.toLocaleString("en-US")],
+        ]}
+      />
+    </>
   );
 }

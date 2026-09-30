@@ -1,6 +1,12 @@
 import "server-only";
 
 import { readJSON, readString, RateLimitedError } from "./genlayer";
+import { isAddress } from "./address";
+
+// Re-exported so server code has one import to remember. The definition lives in
+// address.ts, which carries no server-only marker, because a client component needs
+// the shape check and must not pull the chain client in with it.
+export { isAddress };
 import type {
   CharterRule,
   ConstitutionalState,
@@ -13,8 +19,6 @@ import type {
   ProposalAudit,
   TrustRecord,
 } from "./types";
-
-const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 
 /**
  * How many proposals one page render will fetch, and how long it may spend.
@@ -60,10 +64,6 @@ const MAX_PROPOSALS = Math.floor((NODE_CALLS_PER_MINUTE - SLACK_CALLS - FIXED_RE
  * of being killed by the platform holding the response open.
  */
 const RENDER_BUDGET_MS = 45_000;
-
-export function isAddress(value: string): boolean {
-  return ADDRESS.test(value.trim());
-}
 
 /**
  * Read a whole trust in one pass.

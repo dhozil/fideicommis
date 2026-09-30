@@ -1,92 +1,112 @@
 "use client";
 
-import { useState } from "react";
-import { useWallet, CHAIN_ID } from "@/lib/wallet";
-import { shortAddress } from "@/lib/format";
+import { useEffect, useState } from "react";
+import { useWallet } from "@/lib/wallet";
+import { shortAddress } from "@/lib/explorer";
 
 /**
- * The connection control.
+ * Connecting a wallet.
  *
- * Written so a reader can tell three things apart that dApps usually blur: which
- * wallet is present, whether it is on the right network, and whether the app
- * holds a key. It does not, and saying so is part of the interface rather than a
- * footnote, because this app points at a trust whose entire claim is that its
- * operator cannot take the money.
+ * Discovery is EIP-6963 rather than a list of window.ethereum sniff, so the page
+ * does not have to guess which wallet is installed. Signing happens in the browser
+ * through the injected provider; this site never sees a key, which is why it can
+ * offer to act on a trust without asking anyone to trust it with anything.
+ *
+ * The failure states are the ones that actually happen and none of them are
+ * "something went wrong": no wallet installed, the user dismissed the prompt,
+ * rejected the request, switched to the wrong chain, or a network that is not in
+ * their wallet at all.
  */
 export function WalletPanel() {
-  const { address, wallets, selected, onStudionet, busy, error, connect, disconnect, switchNetwork } = useWallet();
-  const [open, setOpen] = useState(false);
+  const wallet = useWallet();
+  const [copied, setCopied] = useState(false);
 
-  if (!wallets.length) {
-    return (
-      <div className="wallet">
-        <span className="wallet-none">No EVM wallet found in this browser</span>
-        <span className="wallet-note">Reading needs no wallet. Sending a transaction does.</span>
-      </div>
-    );
-  }
-
-  if (address && !open) {
-    return (
-      <div className="wallet">
-        <span className="wallet-addr" title={address}>
-          {shortAddress(address)}
-        </span>
-        {!onStudionet ? (
-          <button className="wallet-action warn" type="button" onClick={switchNetwork} disabled={busy}>
-            Wrong network
-          </button>
-        ) : (
-          <span className="wallet-ok">Studionet</span>
-        )}
-        <button className="wallet-action" type="button" onClick={() => setOpen((o) => !o)}>
-          {open ? "Hide" : "Account"}
-        </button>
-      </div>
-    );
-  }
-
-  if (address && open) {
-    return (
-      <div className="wallet wallet-open">
-        <dl className="wallet-detail">
-          <dt>Connected</dt>
-          <dd className="wrap">{address}</dd>
-          <dt>Network</dt>
-          <dd>{onStudionet ? `Studionet (${CHAIN_ID})` : `wrong network, expected ${CHAIN_ID}`}</dd>
-          <dt>Wallet</dt>
-          <dd>{selected === "rabby" ? "Rabby" : "MetaMask"}</dd>
-        </dl>
-        <p className="wallet-note">
-          Signing happens in your wallet. This app holds no key and cannot move money on its own.
-        </p>
-        <div className="wallet-buttons">
-          {!onStudionet ? (
-            <button className="wallet-action warn" type="button" onClick={switchNetwork} disabled={busy}>
-              Switch to Studionet
-            </button>
-          ) : null}
-          <button className="wallet-action" type="button" onClick={disconnect} disabled={busy}>
-            Disconnect
-          </button>
-        </div>
-        {error ? <p className="wallet-error">{error}</p> : null}
-      </div>
-    );
-  }
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 1800);
+    return () => clearTimeout(timer);
+  }, [copied]);
 
   return (
-    <div className="wallet wallet-open">
-      <p className="wallet-note">Connect a wallet to fund this trust, propose, or vote.</p>
-      <div className="wallet-buttons">
-        {wallets.map((w) => (
-          <button key={w.id} className="wallet-action primary" type="button" onClick={() => connect(w.id)} disabled={busy}>
-            {w.icon ? <img className="wallet-icon" src={w.icon} alt="" aria-hidden /> : null}
-            {busy ? "Connecting…" : `Connect ${w.name}`}
-          </button>
-        ))}
-      </div>
-      {error ? <p className="wallet-error">{error}</p> : null}
+    <div className="panel" style={{ padding: 14, minWidth: 250 }}>
+      {!wallet.wallets.length ? (
+        <>
+          <span className="eyebrow" style={{ marginBottom: 6 }}>
+            No wallet found
+          </span>
+          <p className="muted" style={{ fontSize: "0.86rem", margin: 0 }}>
+            This page reads without one. Install a wallet such as MetaMask or Rabby to
+            fund the trust or advance its cycle.
+          </p>
+        </>
+      ) : !wallet.address ? (
+        <>
+          <span className="eyebrow" style={{ marginBottom: 8 }}>
+            Act on a trust
+          </span>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {wallet.wallets.map((entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                onClick={() => wallet.connect(entry.id)}
+                disabled={wallet.busy}
+                style={{ padding: "9px 13px", fontSize: "0.7rem" }}
+              >
+                {entry.name}
+              </button>
+            ))}
+          </div>
+          <p className="faint" style={{ fontSize: "0.78rem", margin: "10px 0 0" }}>
+            Your key stays in the wallet. Nothing is sent to this site.
+          </p>
+        </>
+      ) : (
+        <>
+          <span className="eyebrow" style={{ marginBottom: 6 }}>
+            Connected
+          </span>
+          <p
+            className="data"
+            style={{ margin: "0 0 10px", fontSize: "0.82rem", wordBreak: "break-all" }}
+          >
+            {shortAddress(wallet.address)}
+          </p>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {!wallet.onStudionet ? (
+              <button type="button" onClick={() => wallet.switchNetwork()} disabled={wallet.busy}>
+                {wallet.busy ? "Switching…" : "Switch to Studionet"}
+              </button>
+            ) : (
+              <span className="seal" style={{ color: "var(--verified)" }}>
+                Studionet
+              </span>
+            )}
+            <button type="button" onClick={wallet.disconnect} disabled={wallet.busy}>
+              Disconnect
+            </button>
+          </div>
+          {copied ? (
+            <p className="faint" style={{ fontSize: "0.78rem", margin: "10px 0 0" }}>
+              Address copied.
+            </p>
+          ) : null}
+        </>
+      )}
+
+      {wallet.error ? (
+        <p
+          role="alert"
+          style={{
+            margin: "12px 0 0",
+            fontSize: "0.82rem",
+            color: "var(--breach)",
+            maxWidth: "none",
+          }}
+        >
+          {wallet.error}
+        </p>
+      ) : null}
     </div>
   );
 }
