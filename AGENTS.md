@@ -27,7 +27,10 @@ touches one needs a test that fails without it.
 
 1. **Storage fields are appended, never inserted.** GenLayer's layout is
    positional. A field inserted mid-list silently reinterprets every field after
-   it. The class carries an `APPEND` comment marking where that boundary is.
+   it. `test_storage_layout_is_frozen_append_only` pins all 44 names and types in
+   order, and the class carries an `APPEND` comment marking the boundary. Both
+   exist because a comment alone is not a test, and this rule went unenforced for
+   most of the project's life.
 2. **No float division, anywhere.** `tests/test_no_float.py` inventories every
    division in the contract and fails on a float one. A float in
    consensus-executed code crashes the VM instead of returning a wrong number.
@@ -85,6 +88,7 @@ genvm-lint check contracts/fideicommis.py
 
 npm install && npm run dev            # the reader, from the repo root
 npm run typecheck
+python check_bundle_guard.py           # the reader's server-only guard, on Windows
 
 node deploy/deployScript.ts --dry-run
 ```
@@ -94,7 +98,7 @@ node deploy/deployScript.ts --dry-run
 The order that catches the most, because each layer has caught something the
 others did not:
 
-1. `python -m pytest -q` — 114 tests, including the adversarial capture sequence.
+1. `python -m pytest -q` — 117 tests, including the adversarial capture sequence.
 2. `genvm-lint check` on the contract.
 3. A live run on Studionet. This is where the reader's throttling bug and the
    driver's hardcoded cycle count were found. Neither the test suite nor the
@@ -102,6 +106,9 @@ others did not:
 4. For the reader, a screenshot. Both of its bugs were things only a rendered
    page showed: a cache-truncated label and a 500 where a 404 was the honest
    answer.
+5. `python check_bundle_guard.py`. The reader's two server-only checks are one line
+   of `server-only` away from becoming silent, and CI's version of them was
+   checking the wrong thing until a build proved it.
 
 ## Known environment limits
 

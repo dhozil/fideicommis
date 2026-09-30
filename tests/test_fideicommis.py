@@ -1,4 +1,6 @@
+import ast
 import json
+from pathlib import Path
 
 import pytest
 
@@ -1628,3 +1630,133 @@ def test_tremap_get_falls_back_to_zero_for_an_unknown_address(warp, direct_vm, d
     members = json.loads(org.get_members())
     assert [m["address"].lower() for m in members] == [hx(direct_owner).lower()]
     assert members[0]["shares"] == 10000
+
+
+# --- the storage layout is the ABI ------------------------------------------
+#
+# GenLayer's storage layout is positional: field number N is always field N. A
+# field inserted in the middle does not raise, does not fail a type check, and does
+# not show up in any behavioural test. It silently reinterprets every field after it,
+# so a deployed trust reads a u256 as a TreeMap and the damage is not visible until
+# someone reads a view that touches the shifted field.
+#
+# This is the first rule in AGENTS.md and it said a change touching it needs a test
+# that fails without it. There was no such test, which is how it stayed unwritten
+# for so long. This is it. The failure is deliberately loud and names the field, so
+# that appending correctly is a one-line edit here rather than a silent migration.
+#
+# Read the assertion, not the list: the point is not that there are 44 fields, it is
+# that the sequence is frozen. Append at the end, then add the pair below.
+
+_STORAGE_LAYOUT = [
+    ("org_name", "str"),
+    ("mission", "str"),
+    ("charter", "str"),
+    ("charter_version", "u256"),
+    ("charter_history", "DynArray[str]"),
+    ("charter_rules", "DynArray[CharterRule]"),
+    ("founder", "Address"),
+    ("operator", "Address"),
+    ("members", "DynArray[Address]"),
+    ("member_shares", "TreeMap[Address, u256]"),
+    ("total_shares", "u256"),
+    ("quorum_bps", "u256"),
+    ("evidence_urls", "DynArray[str]"),
+    ("treasury", "u256"),
+    ("lifetime_inflow", "u256"),
+    ("lifetime_outflow", "u256"),
+    ("burn_per_cycle", "u256"),
+    ("keeper_reward", "u256"),
+    ("tick_interval", "u64"),
+    ("next_tick_at", "u64"),
+    ("last_tick_at", "u64"),
+    ("cycle", "u256"),
+    ("status", "str"),
+    ("spend_ceiling_bps", "u256"),
+    ("proposals", "TreeMap[str, Proposal]"),
+    ("proposal_order", "DynArray[str]"),
+    ("proposal_violations", "TreeMap[str, DynArray[str]]"),
+    ("proposal_approvers", "TreeMap[str, DynArray[str]]"),
+    ("proposal_rejecters", "TreeMap[str, DynArray[str]]"),
+    ("proposal_count", "u256"),
+    ("executed_count", "u256"),
+    ("settled_count", "u256"),
+    ("tick_count", "u256"),
+    ("keeper_count", "u256"),
+    ("total_keeper_paid", "u256"),
+    ("mission_log", "DynArray[str]"),
+    ("log_truncated", "bool"),
+    ("last_action", "str"),
+    ("last_rationale", "str"),
+    ("lifetime_granted", "u256"),
+    ("lifetime_settled", "u256"),
+    ("lifetime_dissolved", "u256"),
+    ("amendment_delay", "u64"),
+    ("op_ready_at", "TreeMap[str, u64]"),
+]
+
+# The field the contract's own comment calls out as the start of the appended
+# region. Kept as a name rather than an index so the test still means something if
+# the list above is ever updated deliberately.
+_APPEND_BOUNDARY = "lifetime_granted"
+
+
+def _declared_storage_fields():
+    """(name, type) for every annotated class-level field, in declaration order.
+
+    Parsed with ast rather than read off the source with a regex, because a regex
+    would also match the `self.x: T = ...` annotations that appear inside methods,
+    and this test exists to catch exactly the kind of edit that a loose match
+    would paper over.
+    """
+    tree = ast.parse(Path(ORG_PATH).read_text(encoding="utf-8"))
+    cls = next(
+        n for n in tree.body
+        if isinstance(n, ast.ClassDef) and n.name == "Fideicommis"
+    )
+    return [
+        (node.target.id, ast.unparse(node.annotation))
+        for node in cls.body
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name)
+    ]
+
+
+def test_storage_layout_is_frozen_append_only():
+    actual = _declared_storage_fields()
+    expected = _STORAGE_LAYOUT
+
+    assert len(actual) == len(expected), (
+        f"the contract declares {len(actual)} storage fields, the frozen layout has "
+        f"{len(expected)}. A field was added or removed. If it was APPENDED, add it to "
+        f"the end of _STORAGE_LAYOUT. If it was inserted or deleted, that reinterprets "
+        f"every field after it on every deployed trust and is a breaking change."
+    )
+    for index, (got, want) in enumerate(zip(actual, expected)):
+        assert got == want, (
+            f"storage field {index} is {got[0]}: {got[1]}, expected {want[0]}: {want[1]}. "
+            f"The layout is positional, so a difference here means a field was inserted, "
+            f"deleted, reordered or retyped mid-list, and every field after index {index} "
+            f"now points at the wrong slot on every trust that is already deployed."
+        )
+
+
+def test_storage_layout_has_no_duplicate_names():
+    names = [n for n, _ in _declared_storage_fields()]
+    duplicates = sorted({n for n in names if names.count(n) > 1})
+    assert not duplicates, f"two storage fields share a name: {duplicates}"
+
+
+def test_the_append_boundary_still_marks_the_end_of_the_frozen_region():
+    """The contract carries a comment saying everything below is appended.
+
+    The list above and that comment are the same rule written twice. If a field is
+    appended without moving the comment, the two disagree and the comment becomes a
+    lie that the next reader will trust.
+    """
+    source = Path(ORG_PATH).read_text(encoding="utf-8")
+    assert _APPEND_BOUNDARY in [n for n, _ in _declared_storage_fields()]
+    assert "Everything below is APPENDED" in source, (
+        "the contract's APPEND boundary comment is gone. The storage layout is "
+        "positional and the frozen test above cannot say which fields are safe to "
+        "append after, because that judgement currently lives only in this comment."
+    )

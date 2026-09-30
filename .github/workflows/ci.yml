@@ -77,14 +77,54 @@ jobs:
 
       # Both checks read from web/. They are the last two steps on purpose: the
       # bundle check is only meaningful once a build has produced .next.
-      - name: the chain reader must not reach a client bundle
-        working-directory: web
+      #
+      # `server-only` is the mechanism that keeps the reader out of the browser, and
+      # it is enforced by the compiler, not by this step. A client component that
+      # imports web/src/lib/trust.ts fails the build outright, with the error
+      # "You're importing a module that depends on server-only". That was verified by
+      # writing exactly that component and watching the build fail.
+      #
+      # So the old check for `gen_call|createClient|genlayer-js` in a client chunk was
+      # the wrong check, twice over. It failed on a bundle behaving as designed,
+      # because actions.ts and wallet.ts are client modules that sign through the
+      # user's own wallet and genuinely need the SDK. And it could not have caught the
+      # leak it was named for, because the build stops before a bundle exists.
+      #
+      # What is left here is a check the compiler cannot make: that both server-only
+      # modules still declare the marker. Deleting one line from a file would
+      # otherwise turn a compile-time guarantee into a silent one, and that is exactly
+      # the kind of change no test in this repository would otherwise notice.
+      - name: server-only guard, and the local copy of these two checks
         run: |
-          if grep -rlE "gen_call|createClient|genlayer-js" .next/static/chunks 2>/dev/null; then
-            echo "::error::GenLayer client code found in a client bundle"
-            exit 1
-          fi
-          echo "ok: no chain client code in any client chunk"
+          # The two reader checks below are bash because the runner is a Linux
+          # container. check_bundle_guard.py is the same two checks in Python,
+          # marked for contributors on Windows, where `bash` is not a shell that
+          # exists. It is the file to run when changing either check.
+          python check_bundle_guard.py
+
+      - name: the server-only reader is marked server-only
+        run: |
+          for f in web/src/lib/genlayer.ts web/src/lib/trust.ts; do
+            if ! grep -q '^import "server-only";' "$f"; then
+              echo "::error::$f no longer imports server-only; the chain reader could be bundled into the browser"
+              exit 1
+            fi
+          done
+          echo "ok: both server-only modules still declare the marker"
+
+      - name: the chain reader is imported only by server modules
+        run: |
+          # The compiler catches a direct client import. It does not catch a client
+          # component importing a component that imports the reader, so the
+          # transitive case is checked here: every file that reaches trust.ts or
+          # genlayer.ts must itself be free of "use client".
+          for f in $(grep -rlE '@/lib/(trust|genlayer)|from "\./(trust|genlayer)"' web/src); do
+            if head -1 "$f" | grep -q "use client"; then
+              echo "::error::$f is a client component and reaches the server-only chain reader"
+              exit 1
+            fi
+          done
+          echo "ok: no client component reaches the chain reader"
 
       - name: no key material in the app
         working-directory: web

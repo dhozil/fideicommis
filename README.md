@@ -165,7 +165,7 @@ npm run typecheck --workspace web
 npm run build --workspace web
 ```
 
-Expect `114 passed, 8 skipped`. The skips are the integration tests, which skip
+Expect `117 passed, 8 skipped`. The skips are the integration tests, which skip
 themselves when no GenLayer node is reachable. `tests/test_no_float.py` is the
 file to read first if the review is about VM stability.
 
@@ -260,7 +260,7 @@ pip install -e ".[dev]"   # the one dependency list is pyproject.toml
 # static checks
 genvm-lint check contracts/fideicommis.py
 
-# 114 tests, no network, no model calls, ~9 seconds
+# 117 tests, no network, no model calls, ~11 seconds
 python -m pytest -v
 
 # the VM stability invariant on its own
@@ -970,6 +970,40 @@ behind it threw a raw SDK error and produced a 500, where the honest answer is a
 error boundary are now written for the two ways this actually fails, rather than
 for the one that is easy to imagine.
 
+### A trust that grew too expensive to read
+
+Serialising the calls fixed the concurrency and left the arithmetic, and the
+arithmetic was the part that actually breaks. A trust is an estate in perpetuity:
+the proposal count only goes up. The reader spent **ten fixed reads plus two per
+proposal, with no ceiling**, so a trust at 20 proposals cost 50 calls, one at 100
+cost 210, and one at 1,000 could not be read at all. The node allows 30 calls a
+minute per IP and gives the client no way to reserve any of them, so the reader
+would have been throttled by its own success, and a retired-but-perfectly-healthy
+trust would have become unreadable exactly when it mattered most.
+
+The fix is not to retry harder. Retrying a throttled call spends more of the budget
+it already exceeded, which makes a busy node busier. The fix is to render less:
+
+- **Seven redundant calls are gone.** The page read `get_org_name`, `get_status`,
+  `get_cycle`, `get_treasury`, `get_runway_cycles`, `get_last_action` and
+  `get_charter_version` individually, and `get_org_summary` already returns all
+  seven. Fixed reads went from 17 to 10 and no field left the page.
+- **Proposals are capped, and the cap is derived rather than chosen.** The newest
+  nine are shown, because `(30 - 2 slack - 10 fixed) / 2 per proposal = 9`. Nine
+  costs 28 of the node's 30 calls, so the node stays answerable for the rest of the
+  minute. Ten would be exactly 30 and would consume all of it, which means opening
+  the same trust in two tabs would throttle the second — the ordinary case, not an
+  edge one. The oldest records are the ones not shown, and the page says how many
+  and where the full list is readable.
+- **There is a deadline as well as a count.** The cap bounds the request spend; a
+  slow node can still make nine calls take a minute, so a 45-second budget is
+  checked between proposals and a render that is running out of time returns what it
+  has.
+
+A trust with any number of proposals now costs the same 28 calls. Verified against
+the live trust, whose ten fixed reads all answer and whose summary supplies all
+seven fields the reader used to fetch separately.
+
 ## A charter can deadlock its own amendment
 
 The most interesting failure found in this project, and it is a design trap
@@ -1024,6 +1058,26 @@ all four call sites that wrap calldata.
 
 The general lesson: direct mode proves logic, only a real network proves the
 contract runs. Treat a green direct-mode suite as necessary, never sufficient.
+
+## The storage layout is the ABI
+
+GenLayer's storage layout is positional: field number N is always field N. A field
+inserted in the middle does not raise, does not fail a type check, and does not
+show up in any behavioural test. It silently reinterprets every field after it, so
+a deployed trust reads a `u256` as a `TreeMap` and the damage does not surface until
+someone reads a view that touches the shifted field.
+
+This is the first rule in `AGENTS.md`, and for a long time nothing enforced it. The
+class carried a comment saying "everything below is APPENDED", and a comment is not
+a test. `test_storage_layout_is_frozen_append_only` in `tests/test_fideicommis.py`
+now pins all 44 field names and types in order, parsed with `ast` rather than a
+regex so that an annotation inside a method cannot be mistaken for a field. Adding a
+field makes it fail with the name and the position.
+
+It was checked by breaking the contract on purpose. Inserting one field in the
+middle failed on the count. Swapping two adjacent fields, which keeps the count and
+every type identical, failed on the pairwise comparison. Only the second check can
+see that edit, which is why both exist.
 
 ## Storage rules this contract depends on
 

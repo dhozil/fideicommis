@@ -7,7 +7,7 @@ were removed, so contributions that change a guard need to change a test with it
 
 ```bash
 pip install -e ".[dev]"
-python -m pytest -q          # 114 passed, 8 skipped, no network, no model calls
+python -m pytest -q          # 117 passed, 8 skipped, no network, no model calls
 ```
 
 The skips are the integration tests. They skip themselves when no node is
@@ -20,10 +20,18 @@ test is not a passing test, and the README says so.
 genvm-lint check contracts/fideicommis.py
 python -m pytest -q
 for f in scripts/*.cjs; do node --check "$f"; done
-cd web && npx tsc --noEmit && npm run build
+npm run typecheck --workspace web
+npm run build --workspace web
+python check_bundle_guard.py
 ```
 
-CI runs all four.
+CI runs all six. The npm commands install and run from the repository root because
+it is an npm workspace: `npm ci` inside `web/` installs only that member and skips
+the hoisting that lets `next build` find react at all.
+
+`check_bundle_guard.py` is the local copy of CI's two server-only checks. It exists
+because CI runs them in bash for a Linux container, and `bash` is not a shell that
+exists on Windows. It is the file to run when changing either check.
 
 ## Rules the contract has to keep
 

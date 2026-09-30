@@ -12,6 +12,11 @@ positional.
 
 ## [0.6.0] — one contract, and no key that owns the future
 
+Three of the four findings below are things the project claimed and did not have.
+The storage layout was the project's first rule and nothing enforced it; the reader
+was not reading a trust the node would answer; and the CI guard for the reader was
+failing on correct code while unable to catch a real leak.
+
 The factory is gone. That makes the project one contract, one file, and it removes
 the quietest capture in the codebase.
 
@@ -77,7 +82,57 @@ raises "was already assessed" before it touches the field, so a nested list is
 assigned exactly once. The guard is a stronger guarantee than the semantics
 question it made unaskable.
 
-114 direct-mode tests, genvm-lint green.
+### The storage layout is now pinned by a test
+
+`test_storage_layout_is_frozen_append_only` freezes all 44 field names and types in
+order, parsed with `ast` rather than a regex so an annotation inside a method cannot
+be mistaken for a field. The rule was the project's first rule and had only a
+comment enforcing it, which is how it stayed unenforced for most of the project's
+life.
+
+Both of its checks were shown to be load-bearing by breaking the contract on
+purpose. Inserting a field in the middle failed on the count. Swapping two adjacent
+fields, keeping the count and every type identical, failed on the pairwise
+comparison. Only the second check can see that edit.
+
+### A trust that had grown too expensive to read
+
+The reader spent ten fixed reads plus two per proposal, with no ceiling. A trust is
+an estate in perpetuity, so the proposal count only rises: 20 proposals cost 50
+calls, 100 cost 210, and 1,000 could not be read at all. The node allows 30 a minute
+per IP with no way to reserve any, so a retired but healthy trust would have become
+unreadable exactly when it mattered. Serialising the calls had fixed the concurrency
+and left the arithmetic.
+
+Seven redundant calls are gone — the page fetched `get_status`, `get_cycle`,
+`get_treasury`, `get_runway_cycles`, `get_last_action`, `get_charter_version` and
+`get_org_name` individually while `get_org_summary` already returned all seven.
+Proposals are capped at the newest nine, derived as
+`(30 - 2 slack - 10 fixed) / 2 = 9` so the cap cannot drift from the node's limit,
+and capped means a trust with 10,000 proposals costs the same 28 calls as one with
+none. A 45-second deadline is checked between proposals for the case the count does
+not catch, which is a slow node rather than a large trust.
+
+Verified against the live trust: ten of ten fixed reads answer, and the summary
+supplies all seven fields the reader used to fetch separately.
+
+### CI's server-only check was checking the wrong thing
+
+The step grepped client bundles for `gen_call|createClient|genlayer-js`. That is
+wrong twice. `actions.ts` and `wallet.ts` are client modules that sign through the
+user's own wallet and genuinely need the SDK, so the step failed on a bundle
+behaving exactly as designed. And it could not have caught a real leak, because
+`server-only` is enforced by the compiler: writing a client component that imports
+the reader fails the build outright, so no bundle ever exists to grep.
+
+What replaced it checks the two things the compiler cannot. That both modules still
+declare `server-only`, since deleting one line would turn a compile-time guarantee
+into a silent one. And that no client component reaches the reader transitively,
+which the compiler does not check. Both were shown to fail when violated.
+`check_bundle_guard.py` is the same two checks in Python, for a Windows
+contributor, and it is what CI runs as well as the bash versions.
+
+117 direct-mode tests, genvm-lint green.
 
 ## [0.5.0] — the audit reader, as a full-stack application
 
