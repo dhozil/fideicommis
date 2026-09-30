@@ -33,6 +33,27 @@ the hoisting that lets `next build` find react at all.
 because CI runs them in bash for a Linux container, and `bash` is not a shell that
 exists on Windows. It is the file to run when changing either check.
 
+## If you touch the consensus suite
+
+It is not part of the default run. Studio mode needs the `gltest` CLI, and under
+plain `pytest` the suite skips itself with the command to run, because it cannot
+deploy that way.
+
+```bash
+gltest tests/integration -v -s --network studionet
+gltest tests/integration -v -s -m slow --network studionet
+```
+
+Two things there are measured rather than assumed, and both cost this project its
+consensus suite when they were believed instead of checked. The conftest records them
+in full, so read it before changing anything here.
+
+Cloudflare does block some User-Agents, so `urllib` cannot reach Studionet, but
+`requests` can and that is what `gltest` uses. And the local engine's
+`@allow_storage` error is not a stricter rule: it only honours the decorator on a
+module it has not already loaded, which is why every test deploys a unique copy of
+the source.
+
 ## Rules the contract has to keep
 
 These are not style preferences. Changing any of them changes what the project

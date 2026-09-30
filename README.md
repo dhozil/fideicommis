@@ -354,32 +354,76 @@ get_constitutional_state: {"quorum_bps": 5000, "spend_ceiling_bps": 2000, ...}
 
 ## Integration tests
 
-`tests/integration` runs the same flows through a validator committee. It needs
-a reachable node and skips itself with instructions when there is none.
+`tests/integration` runs the same flows through a real validator committee, on
+Studionet. It skips itself with the command to run when the CLI is not driving it.
 
 ```bash
-GENLAYER_RPC=http://127.0.0.1:4000/api gltest tests/integration -v -s --contracts-dir contracts --network localnet
+gltest tests/integration -v -s --network studionet
+
+# the five that call real models, about eleven minutes more
+gltest tests/integration -v -s -m slow --network studionet
 ```
 
-Notes on this target:
+The eight fast ones pass. It takes about ten minutes, because every transaction goes
+through a committee and the node answers in seconds rather than milliseconds. The
+public node is occasionally flaky: a single run may show one failure that is a 502 or
+an SSL EOF, which is the node rather than the contract, so re-run before believing
+one.
 
-- `gltest` resolves contract paths against `--contracts-dir`. Do not add a
-  `networks:` block to `gltest.config.yaml` - with `genlayer-test` 0.29.2 a
-  partial override crashes the preconfigured-network lookup, and the `default`
-  key shown in the docs is not a valid key in that version.
-- Against **Studionet this suite cannot run**: the Python SDK is blocked by
-  Cloudflare. Use the `genlayer` CLI there, as shown above.
-- `glsim` (`pip install genlayer-test[sim]`) is **not** usable with this suite at
-  the moment: it fails to register deployed contracts for schema reads, and a
-  second deployment of identical contract code inside the same process raises
-  `class is not marked for usage within storage`. Use GenLayer Studio
-  (`genlayer up`, needs Docker) instead.
+Notes on this target, all measured rather than assumed:
+
+- **The suite needs the `gltest` CLI.** Under plain `pytest` it skips with the
+  command above. The discriminator is `sys.argv[0]`, because the config loads either
+  way and reports the same network.
+- **`gltest.config.yaml` declares no `networks` block, deliberately.** Declaring one
+  REPLACES the presets instead of extending them: a file naming only localnet makes
+  `--network studionet` fail with `Unknown network: studionet, possible values:
+  ['localnet']`. Presets are already right, so the file only sets the contracts
+  directory.
+- **The network presets are not interchangeable.** GenLayer is explicit that
+  Studionet, Studio dev and localnet have different chain IDs and deployments, and
+  that a release-candidate environment must not be reached by relabelling the stable
+  preset. Choose with `--network`, do not repoint one.
+- **A local `glsim` is a worse place to verify than the hosted node**, which is not
+  what anyone assumes. It only honours `@allow_storage` on a module it has not
+  already loaded, so a second deploy of identical code in one process fails naming a
+  class that carries the decorator; and `genlayer-test` cannot build a usable
+  contract handle against it, because its schema comes back empty from the RPC
+  fallback chain. The suite works around the first with a unique copy of the source
+  per test, and works around the second by building the handle from the schema
+  directly. `tests/integration/conftest.py` records both with the measurements.
 - Mock validators and `genvm_datetime` are **localnet only**:
   `simulate_write_contract` in `genlayer-py` rejects any other chain, so on a
   hosted network neither the LLM output nor the transaction timestamp can be
   pinned. Budget for real calls and real rate limits.
 - Fee-charging networks need a measured profile first: `gltest tests/integration
   --fee-profile --contracts-dir contracts`.
+
+### Two limitations this file used to state, both of which were false
+
+Worth recording because they are how an entire test suite stayed switched off.
+
+**"gltest cannot reach Studionet, Cloudflare blocks the Python SDK."** The mechanism
+is real and the conclusion is not. Cloudflare answers error 1010 to a User-Agent it
+does not recognise, and `urllib`'s default is one of those. But `gltest` goes through
+`requests`, which it accepts:
+
+| Client | Result against `studio.genlayer.com/api` |
+| --- | --- |
+| `urllib`, no User-Agent | 403, `error code: 1010` |
+| `urllib`, `Python-urllib/3.12` | 403, `error code: 1010` |
+| `urllib`, `python-requests/2.32` | 200, `0xf22f` |
+| `requests`, its own default | 200, `0xf22f` |
+
+What could not get through was the project's own hand-rolled probe in the conftest,
+and because that probe was the only thing standing between the suite and the network,
+the limitation got recorded against `gltest`. The probe now uses `requests`.
+
+**"The local engine is stricter about `@allow_storage`."** Disproved by a 12-line
+control contract carrying the same decorator, which deploys cleanly. The same source
+deployed six times against one node then succeeded once and failed five times, and
+four different sources all deployed: the engine caches a module per source hash and
+only honours the decorator on the first load of it. A stateful bug, not a rule.
 
 ## No floats anywhere in consensus
 
@@ -435,25 +479,28 @@ What you do need to know is which tool can actually *reach* it.
 | Tool | Reaches Studionet | Docker | Mocks LLM/web | Pins time | Use it for |
 | --- | --- | --- | --- | --- | --- |
 | direct mode (`genlayer-test`) | n/a, no network | no | yes | yes | logic, storage semantics, validator agreement |
-| `genlayer` CLI (Node.js) | **yes** | no | no | no | real end-to-end deployment and inspection |
-| `gltest --network studionet` | **no, blocked** | no | no | no | unusable against Studionet as installed |
-| `glsim` (local) | n/a | no | yes | yes | local network, but broken in 0.29.2 |
+| `gltest --network studionet` | **yes** | no | no | no | the consensus suite, through a real committee |
+| `genlayer` CLI (Node.js) | **yes** | no | no | no | deployment, receipt-hash correlation, a full cycle |
+| `glsim` (local) | n/a | no | yes | yes | local network, but defective in 0.29.2, see above |
 | GenLayer Studio local | n/a | yes | yes | yes | full GenVM parity when you have Docker |
 
-**Studionet sits behind Cloudflare and rejects non-browser User-Agents.** This
-was measured, not guessed:
+**Studionet sits behind Cloudflare and rejects some User-Agents.** This was
+measured, not guessed, and the previous version of this file drew the wrong
+conclusion from it:
 
 ```
-User-Agent: Python-urllib/3.12                     -> HTTP 403  (Cloudflare 1010)
-User-Agent: genlayer-py/0.16.3                    -> HTTP 502
-User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64)   -> HTTP 200  {"result":"0xf22f"}
+urllib with no User-Agent set              -> HTTP 403  (Cloudflare 1010)
+User-Agent: Python-urllib/3.12             -> HTTP 403  (Cloudflare 1010)
+User-Agent: python-requests/2.32           -> HTTP 200  {"result":"0xf22f"}
+User-Agent: Mozilla/5.0 (Windows NT 10.0)   -> HTTP 200  {"result":"0xf22f"}
 ```
 
-`genlayer-py` 0.16.3 (and therefore `gltest`) sends the second kind of header,
-so **every** Python-SDK call to Studionet is refused. The Node.js CLI gets
-through, which makes it the only automated route to Studionet today. If you
-need pytest against Studionet, front it with a proxy that rewrites the
-User-Agent, or wait for an SDK release that sets a browser UA.
+So the block is real, and it is about `urllib`'s default User-Agent specifically.
+`gltest` and `genlayer-py` go through `requests`, which Cloudflare accepts, so
+pytest against Studionet works: `gltest tests/integration -v -s --network studionet`
+runs this repository's consensus suite against a real committee. What cannot reach
+Studionet is a hand-rolled `urllib` probe, which is exactly what this project used
+to contain, and it is the reason the suite was believed to be impossible.
 
 Studionet limits to plan around: **30 JSON-RPC requests per minute** per IP
 (rejects with `-32029` and a `retry_after_seconds` hint); 32 in-flight

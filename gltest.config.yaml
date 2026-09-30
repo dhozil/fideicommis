@@ -1,0 +1,25 @@
+# Test network configuration for the GenLayer Testing Suite.
+#
+# This file is part of the standard GenLayer project structure, and its absence was
+# why every pytest run opened with a warning and then used a default config that had
+# nothing to do with this project.
+#
+# It sets no networks, and that is deliberate rather than an omission. Declaring a
+# `networks:` block here REPLACES the presets instead of extending them, so a file
+# that names only localnet makes `gltest --network studionet` fail with "Unknown
+# network: studionet, possible values: ['localnet']". That was measured, not
+# assumed. The presets are already correct: localnet is http://127.0.0.1:4000/api,
+# which is the port tools/run_glsim_windows.py starts on, and studionet is
+# https://studio.genlayer.com/api, chain id 61999.
+#
+# The GenLayer documentation is explicit that the presets have different chain IDs
+# and deployments, and that a release-candidate environment must not be reached by
+# relabelling the stable one. So the network is chosen with
+#
+#     gltest tests/integration -v -s --network studionet
+#
+# and nothing here decides which one that is. The only setting below is where
+# gltest looks for contract source.
+paths:
+  contracts: contracts
+  artifacts: artifacts

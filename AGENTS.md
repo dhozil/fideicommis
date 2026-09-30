@@ -86,6 +86,8 @@ pip install -e ".[dev]"
 python -m pytest -q                   # direct mode, no network, no model calls
 genvm-lint check contracts/fideicommis.py
 
+gltest tests/integration -v -s --network studionet   # real consensus
+
 npm install && npm run dev            # the reader, from the repo root
 npm run typecheck
 python check_bundle_guard.py           # the reader's server-only guard, on Windows
@@ -102,7 +104,8 @@ others did not:
 2. `genvm-lint check` on the contract.
 3. A live run on Studionet. This is where the reader's throttling bug and the
    driver's hardcoded cycle count were found. Neither the test suite nor the
-   linter reported either of them.
+   linter reported either of them. It is also where the consensus suite finally ran,
+   and where two claims in this file turned out to be false.
 4. For the reader, a screenshot. Both of its bugs were things only a rendered
    page showed: a cache-truncated label and a 500 where a 404 was the honest
    answer.
@@ -112,21 +115,35 @@ others did not:
 
 ## Known environment limits
 
-- `gltest` cannot reach Studionet (User-Agent filtering). Live verification runs
-  through the Node drivers.
-- The local `glsim` bundle has two defects that stop the consensus suite, both
-  measured rather than assumed and both recorded in
-  `tests/integration/conftest.py`. It only honours `@allow_storage` on a module it
-  has not already loaded, so a repeated deploy of one source fails with a message
-  that names a class carrying the decorator; `staged_contract()` works around that
-  by deploying a unique copy per test. And `genlayer-test` 0.29.2 cannot build a
-  usable contract handle against a local node: `deploy()` returns a contract with no
-  methods, because its schema comes back empty from the RPC fallback chain. So the
-  suite skips, with the reason, rather than reporting eight failures that teach a
-  reviewer to ignore red. The direct-mode suite runs 117 tests against the same
-  logic without a network.
-- An earlier version of that skip blamed a stricter `@allow_storage` rule, which a
-  12-line control contract disproved. Wrong reasons cost more than none.
+- **The consensus suite runs against Studionet and passes.** 8 tests with no model
+  calls, plus 5 marked `slow` that call real models:
+  `gltest tests/integration -v -s --network studionet`, then `-m slow`. The public
+  node is occasionally flaky, so a single run may show one failure that is a 502 or
+  an SSL EOF rather than a defect; re-run before believing it. Ten minutes for the
+  fast eight is normal, because every transaction goes through a real committee.
+- The Node drivers under `scripts/` exist because they were the only way to drive
+  Studionet before this was known, and they still verify more than the suite does:
+  receipt-hash correlation and a full autonomous cycle. Keep both.
+- The local `glsim` bundle has two defects, both measured rather than assumed and both
+  recorded in `tests/integration/conftest.py`. It only honours `@allow_storage` on a
+  module it has not already loaded, so a repeated deploy of one source fails with a
+  message that names a class carrying the decorator; `staged_contract()` works around
+  that by deploying a unique copy per test. And `genlayer-test` 0.29.2 cannot build
+  a usable contract handle against a local node, because its schema comes back empty
+  from the RPC fallback chain. A local node is therefore a worse place to verify than
+  the hosted one, which is not what anyone assumes.
+- **Two claims this file used to make were false and are the reason the suite never
+  ran.** "gltest cannot reach Studionet (User-Agent filtering)": the mechanism is
+  real, Cloudflare answers error 1010 to a `urllib` User-Agent, but gltest goes
+  through `requests` and gets through fine. The project was describing a limitation
+  of its own hand-rolled reachability probe. And "the local engine is stricter about
+  `@allow_storage`", which a 12-line control contract disproved. Wrong reasons cost
+  more than none, and both were found only by measuring.
+- `gltest.config.yaml` sets no `networks` block on purpose. Declaring one REPLACES
+  the presets instead of extending them, so a file naming only localnet makes
+  `--network studionet` fail with "Unknown network". Measured.
+- The suite needs the `gltest` CLI, not plain `pytest`, and the discriminator is
+  `sys.argv[0]`. Under plain `pytest` it skips with the command to run.
 - `tools/run_glsim_windows.py` carries the Windows workarounds for glsim.
 
 ## Contributing

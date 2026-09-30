@@ -134,41 +134,69 @@ contributor, and it is what CI runs as well as the bash versions.
 
 117 direct-mode tests, genvm-lint green.
 
-### The consensus suite skips, and the reason it gave was wrong
+### The consensus suite, and the two limitations it was switched off for
 
-The integration suite has skipped since it was written, and it blamed a stricter
-`@allow_storage` rule in the local glsim bundle. A 12-line control contract carrying
-the same decorator disproved that: it deploys cleanly, so the decorator and the
-engine are both fine.
+Both limitations this project had recorded about the integration suite were false,
+and the suite had been switched off because of them.
 
-The same source deployed six times against the same node then succeeded once and
-failed five times with `class is not marked for usage within storage`, naming a
-class that does carry the decorator. Four deploys of four different sources all
-succeeded. So the engine caches a module per source hash and only honours
-`@allow_storage` on the first load of it: a stateful bug, not a property of the
-contract.
+**"gltest cannot reach Studionet, Cloudflare blocks the Python SDK."** The mechanism
+is real: Cloudflare answers error 1010 to a User-Agent it does not recognise. But
+`gltest` goes through `requests`, which it accepts.
 
-`staged_contract()` now works around it, giving every test a unique copy of the
-contract so the engine always loads a module it has not seen. With that, the suite
-stops skipping and starts running: the contract deploys on the local node and
-`tx_execution_succeeded` sees a real receipt, which is a consensus step that had
-never executed here.
+    urllib, no User-Agent set     -> 403, error code: 1010
+    urllib, Python-urllib/3.12    -> 403, error code: 1010
+    urllib, python-requests/2.32  -> 200, 0xf22f
+    requests, its own default UA  -> 200, 0xf22f
 
-Past that, genlayer-test 0.29.2 cannot address what it deployed on a local node.
-`deploy()` returns a Contract whose method set is empty, so every call on it raises
-`no attribute get_org_name`; the schema those methods come from is fetched over RPC
-through a fallback chain and comes back empty. The contract is fine, the harness is
-the problem, and the skip now says exactly that, with the measurement, instead of
-citing a rule that does not exist.
+The thing that could not reach Studionet was this repository's own hand-rolled
+reachability probe in the conftest, and since that probe was the only thing standing
+between the suite and the network, the limitation got recorded against `gltest`. It
+now uses `requests`.
 
-One receipt from that run is worth recording, because it is this project's own
-stated rule happening in the wild: the failed deploy came back `status_name:
-FINALIZED` with `result.status: rollback` in the leader receipt. A transaction can
+**"The local engine is stricter about `@allow_storage`."** Disproved by a 12-line
+control contract carrying the same decorator, which deploys cleanly. The same source
+deployed six times against one node then succeeded once and failed five times,
+naming a class that does carry the decorator, and four different sources all
+deployed: the engine caches a module per source hash and only honours the decorator
+on the first load of it. A stateful bug rather than a rule, and `staged_contract()`
+works around it by giving every test a unique copy of the source.
+
+Two further defects are real and are handled rather than argued away.
+`genlayer-test` builds a handle's methods from a schema it fetches over RPC through a
+fallback chain, and against a local node that comes back empty, so the handle has no
+methods on it; `deploy_trust` builds the handle from the schema directly and asserts
+the methods are really there. And the sender is bound to the handle rather than taken
+per call, which is why the keeper test needed a second handle to actually reach the
+keeper path.
+
+One receipt from that investigation is worth recording, because it is this project's
+own stated rule happening in the wild: a failed deploy came back `status_name:
+FINALIZED` and, in the same payload, `result.status: rollback`. A transaction can
 be final and have rolled back, and only
 `consensus_data.leader_receipt[0].result.payload` says which. Every driver here
 checks exactly that field, and here is the engine agreeing with them.
 
-117 direct-mode tests, genvm-lint green.
+Result, on Studionet with a real committee:
+
+    gltest tests/integration -v -s --network studionet        8 passed
+    gltest tests/integration -v -s -m slow --network studionet 3 passed, 2 skipped
+
+The two skips are the committee judging a proposal non-compliant, which is a valid
+outcome rather than a failure. The public node is occasionally flaky: across runs the
+suite also showed a 502 and an SSL EOF, so re-run before believing a single failure.
+
+Also added `gltest.config.yaml`, part of GenLayer's standard project structure, which
+was simply absent. It sets no `networks` block, deliberately: declaring one REPLACES
+the presets instead of extending them, so a file naming only localnet makes
+`--network studionet` fail with "Unknown network: studionet, possible values:
+['localnet']". Measured, after writing the block and watching it break the run.
+
+The suite now skips under plain `pytest` with the command to run, because Studio mode
+needs the CLI. The discriminator is `sys.argv[0]`: the config loads under both
+invocations and reports the same contracts directory and the same network, so the
+entry point is the only thing that actually differs.
+
+117 direct-mode tests, 8 consensus tests through a real committee, genvm-lint green.
 
 ## [0.5.0] — the audit reader, as a full-stack application
 

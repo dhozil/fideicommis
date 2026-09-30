@@ -1,60 +1,69 @@
 """Guard rails for the consensus tests.
 
-These need a running GenLayer network, so they skip with instructions when there is
-none. There is a second skip, and it exists because a consensus suite that cannot
-reach the contract is worse than an honest skip: eight red failures teach a reviewer
-to ignore red, which is exactly the state this file was in before.
+These need a running GenLayer network. They run against Studionet, and they skip
+with instructions when there is none. This file's earlier versions claimed two
+things that measurement contradicted, so both are recorded here, because the wrong
+reason cost this project its entire consensus suite.
 
-What is actually wrong, measured rather than assumed. An earlier version of this
-file blamed a stricter `@allow_storage` rule in the local glsim bundle. That was
-wrong, and it is worth writing down because the wrong reason is more expensive than
-no reason.
+**"gltest cannot reach Studionet, User-Agent filtering."**
 
-- A 12-line `@allow_storage` contract deploys cleanly, so the decorator and the
-  engine are both fine.
-- The same source, deployed six times against the same node, succeeded once and
-  failed five times with `class is not marked for usage within storage`. The class
-  named in that message carries the decorator. The message is not describing a fact
-  about the source.
-- Four deploys of four different sources all succeeded.
+The mechanism is real and the conclusion is not. Cloudflare in front of
+https://studio.genlayer.com/api answers error 1010, "banned based on your browser's
+signature", to a request whose User-Agent it does not recognise. But gltest goes
+through `requests`, which is one it accepts. Measured against the live endpoint:
 
-So the engine caches a module per source hash and only honours `@allow_storage` on
-the first load of that module. That is a stateful bug in the local bundle, and it
-has a workaround, which `staged_contract()` below implements: every test deploys a
-copy of the contract carrying a unique comment, so the engine always loads a module
-it has not seen. The copy is byte-identical apart from that comment.
+    urllib, no User-Agent set       -> 403 error code: 1010
+    urllib, Python-urllib/3.12      -> 403 error code: 1010
+    urllib, python-requests/2.32    -> 200 0xf22f
+    requests, its own default UA    -> 200 0xf22f
 
-Past that, genlayer-test 0.29.2 cannot produce a usable contract handle on this
-node. `ContractFactory.deploy()` returns a Contract whose method set is empty, so
-every call on it raises `no attribute get_org_name`. The schema it builds those
-methods from is fetched over RPC with a fallback chain, and against a local node
-that fetch comes back empty. The contract itself is fine: the same file deploys on
-Studionet with real consensus and passes genvm-lint. It is the local test harness
-that cannot address it, and that is what this second check reports.
+What could not get through was this file's own hand-rolled `urllib` probe, and since
+the probe was the only thing between the suite and the network, the project recorded
+a limitation that its own dependency did not have. `_post` now uses `requests`.
 
-To run the suite, point GENLAYER_RPC at a node whose harness can build a contract
-handle:
+**"A local glsim bundle is stricter about @allow_storage than the pinned runner."**
 
-    python tools/run_glsim_windows.py --port 4000 --validators 5
-    $env:GENLAYER_RPC = "http://127.0.0.1:4000/api"
-    python -m pytest tests/integration -v
+Also false, and it was hiding a different bug. A 12-line @allow_storage contract
+deploys cleanly on the local bundle. The same source deployed six times against the
+same node succeeded once and failed five times, naming a class that carries the
+decorator. Four different sources all deployed. So the local engine caches a module
+per source hash and only honours @allow_storage on the first load of it: a stateful
+bug, and `staged_contract()` below works around it by giving every test a unique
+copy of the contract.
+
+A third defect is real and is not worked around: genlayer-test's
+`ContractFactory.deploy()` builds the returned handle's methods from a schema it
+fetches over RPC through a fallback chain, and against a local node that fetch comes
+back empty, so the handle has no methods on it. `test_consensus.deploy_trust` builds
+the handle from the factory's schema directly and then asserts the methods are
+really there, which fails loudly rather than as a confusing `no attribute
+get_org_name` on the first view call. On Studionet the deploy is fine either way.
+
+To run the suite, the way GenLayer documents it:
+
+    gltest tests/integration -v -s --network studionet
+
+    # and the ones that call real models and take minutes each
+    gltest tests/integration -v -s -m slow --network studionet
+
+The network presets have different chain IDs and deployments, and GenLayer is
+explicit that a release-candidate environment must not be reached by relabelling the
+stable one, so the preset is chosen on the command line and nothing here overrides
+it. `gltest.config.yaml` in the repository root sets only the contracts directory:
+declaring a `networks:` block there REPLACES the presets rather than extending them,
+which was also measured.
 """
 
 import itertools
-import json
 import os
 import pathlib
 import shutil
-import urllib.error
-import urllib.request
+import sys
 
 import pytest
 
-DEFAULT_RPC = "http://127.0.0.1:4000/api"
-CONTRACT = "fideicommis.py"
-
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
-CONTRACT_SOURCE = REPO_ROOT / "contracts" / CONTRACT
+CONTRACT_SOURCE = REPO_ROOT / "contracts" / "fideicommis.py"
 # Beside the real contract, because gltest resolves a contract path relative to its
 # configured contracts directory and a file elsewhere is invisible to it.
 STAGING = REPO_ROOT / "contracts" / ".integration"
@@ -63,25 +72,46 @@ _counter = itertools.count(1)
 
 
 def _rpc_url() -> str:
-    return os.environ.get("GENLAYER_RPC", DEFAULT_RPC)
+    """The network the suite is pointed at, which is gltest's own configuration.
+
+    An earlier version read GENLAYER_RPC and defaulted to 127.0.0.1:4000. That made
+    the suite unreachable from the documented invocation, because
+    `gltest --network studionet` sets the network inside gltest's config and never
+    touches the environment variable. The URL is asked for from the same place gltest
+    asks, and GENLAYER_RPC is only an override for endpoints the presets do not
+    cover.
+    """
+    override = os.environ.get("GENLAYER_RPC")
+    if override:
+        return override
+    try:
+        from gltest_cli.config.general import get_general_config
+
+        url = get_general_config().get_rpc_url()
+        if url:
+            return str(url)
+    except Exception:
+        pass
+    return "https://studio.genlayer.com/api"
 
 
 def _post(url: str, method: str, params: list, timeout: float = 20.0):
-    body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
-    request = urllib.request.Request(
+    """One JSON-RPC call for the reachability check. See the module docstring."""
+    import requests
+
+    response = requests.post(
         url,
-        data=body.encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
+        json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params},
+        timeout=timeout,
     )
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        return json.loads(response.read().decode("utf-8"))
+    response.raise_for_status()
+    return response.json()
 
 
-def _reachable(url: str, timeout: float = 2.0) -> bool:
+def _reachable(url: str, timeout: float = 15.0) -> bool:
     try:
         payload = _post(url, "eth_chainId", [], timeout=timeout)
-    except (urllib.error.URLError, OSError, ValueError):
+    except Exception:
         return False
     return "result" in payload
 
@@ -89,67 +119,57 @@ def _reachable(url: str, timeout: float = 2.0) -> bool:
 def staged_contract() -> str:
     """A fresh copy of the contract for every deploy, relative to the contracts dir.
 
-    The appended comment is the only difference, and it is why the suite can get as
-    far as it does: the local engine only honours `@allow_storage` on a module it has
-    not already loaded, so a repeated deploy of one file fails for reasons that have
-    nothing to do with the contract.
+    The appended comment is the only difference. On Studionet it is harmless, and on
+    a local node it is the difference between running and not: the local engine only
+    honours `@allow_storage` on a module it has not already loaded, so a repeated
+    deploy of one file fails for reasons that have nothing to do with the contract.
     """
     tag = next(_counter)
     STAGING.mkdir(parents=True, exist_ok=True)
     target = STAGING / f"fideicommis_{tag}.py"
     shutil.copyfile(CONTRACT_SOURCE, target)
     with target.open("a", encoding="utf-8") as handle:
-        handle.write(f"\n# integration deploy {tag}: a unique source, so the engine loads a fresh module\n")
+        handle.write(
+            f"\n# integration deploy {tag}: a unique source, so the engine loads a fresh module\n"
+        )
     return str(target.relative_to(REPO_ROOT / "contracts"))
 
 
-def _harness_can_address_the_contract() -> str:
-    """Deploy once and return why the harness could not address it, if it could not.
+def _gltest_cli_is_in_charge() -> bool:
+    """True when the `gltest` CLI is driving this run, rather than plain pytest.
 
-    Empty string means the contract is callable, so the suite may run.
+    Studio mode needs the CLI. The network and the config are not the reason, because
+    genlayer-test's pytest plugin loads gltest.config.yaml either way and reports the
+    same contracts directory and the same localnet URL under both invocations. What
+    actually differs is the entry point: `gltest` on argv[0] against
+    pytest/__main__.py. That is the whole test, and it is checked rather than assumed
+    because a plain `pytest` run cannot deploy here, and would otherwise fail eight
+    times for a reason that has nothing to do with the contract.
     """
-    from gltest import get_contract_factory
-
-    factory = get_contract_factory(contract_file_path=staged_contract())
-    try:
-        contract = factory.deploy(args=["Engine Probe", "probe", "charter", "0x" + "00" * 20, ""])
-    except Exception as error:
-        return f"the deployment itself failed: {str(error)[:300]}"
-
-    if not hasattr(contract, "get_org_name"):
-        return (
-            "the deployment succeeded but genlayer-test returned a contract with no methods on it, "
-            "so no view can be called. Its schema is fetched over RPC with a fallback chain and "
-            "comes back empty against a local node."
-        )
-    return ""
+    return pathlib.Path(sys.argv[0]).stem.lower() == "gltest"
 
 
 @pytest.fixture(scope="session", autouse=True)
 def require_genlayer_network():
+    if not _gltest_cli_is_in_charge():
+        pytest.skip(
+            "These run through the gltest CLI, which loads gltest.config.yaml and picks the\n"
+            "network. Plain pytest cannot deploy in Studio mode, so it is not the command:\n"
+            "\n"
+            "  gltest tests/integration -v -s --network studionet\n"
+            "\n"
+            "The direct-mode suite, which is most of this repository, runs under plain pytest:\n"
+            "  python -m pytest -q"
+        )
+
     url = _rpc_url()
     if not _reachable(url):
         pytest.skip(
-            f"No GenLayer node at {url}. Start one and point GENLAYER_RPC at it, e.g.\n"
+            f"No GenLayer node answered at {url}. Point the suite at one:\n"
+            "  gltest tests/integration -v -s --network studionet\n"
+            "Or start a local one:\n"
             "  python tools/run_glsim_windows.py --port 4000 --validators 5\n"
-            "Then run: python -m pytest tests/integration -v"
+            "and pass GENLAYER_RPC=http://127.0.0.1:4000/api"
         )
-
-    problem = _harness_can_address_the_contract()
-    if not problem:
-        yield
-        shutil.rmtree(STAGING, ignore_errors=True)
-        return
-
-    pytest.skip(
-        "The node at this address is reachable and the contract deploys on it, but the test\n"
-        "harness cannot address what it deployed, so these tests could not assert anything: "
-        f"{problem}\n"
-        "\n"
-        "This is a harness limitation, not a contract defect. The identical file deploys on\n"
-        "Studionet with real consensus and passes genvm-lint, and the direct-mode suite runs\n"
-        "117 tests against the same logic without a network.\n"
-        "\n"
-        "Point GENLAYER_RPC at a node whose harness can build a contract handle:\n"
-        "  $env:GENLAYER_RPC = 'https://studio.genlayer.com/api'\n"
-    )
+    yield
+    shutil.rmtree(STAGING, ignore_errors=True)
