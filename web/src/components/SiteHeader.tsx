@@ -55,6 +55,10 @@ export function SiteHeader() {
           </span>
           Fideicommis
         </Link>
+        {/* The network is stated in the chrome, on every page, because every figure
+            on this site came from that one node and a reader should never have to go
+            looking for where. */}
+        <span className="seal site-net">Studionet · read-only</span>
         <nav className="site-nav" aria-label="Primary">
           {LINKS.map((link) => (
             <Link

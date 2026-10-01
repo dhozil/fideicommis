@@ -23,15 +23,21 @@ for f in scripts/*.cjs; do node --check "$f"; done
 npm run typecheck --workspace web
 npm run build --workspace web
 python check_bundle_guard.py
+python check_layout.py
 ```
 
-CI runs all six. The npm commands install and run from the repository root because
+CI runs all seven. The npm commands install and run from the repository root because
 it is an npm workspace: `npm ci` inside `web/` installs only that member and skips
 the hoisting that lets `next build` find react at all.
 
 `check_bundle_guard.py` is the local copy of CI's two server-only checks. It exists
 because CI runs them in bash for a Linux container, and `bash` is not a shell that
 exists on Windows. It is the file to run when changing either check.
+
+`check_layout.py` asserts the page widths against the built stylesheet. Run it after
+`npm run build`. It exists because a layout can regress to cramped and still render
+perfectly: every page returns 200 and nothing looks broken, so nothing fails. It also
+compares against minified output, so it looks for `1440px` and not `--shell: 1440px`.
 
 ## If you touch the consensus suite
 

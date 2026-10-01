@@ -126,6 +126,13 @@ jobs:
           done
           echo "ok: no client component reaches the chain reader"
 
+      # The layout is the kind of thing that regresses silently: a page still returns
+      # 200 and still looks plausible, just narrow. This asserts the widths and the
+      # gutter track are still in the built stylesheet, and that the two old cramped
+      # values have not come back.
+      - name: the layout uses the width it is given
+        run: python check_layout.py
+
       - name: no key material in the app
         working-directory: web
         run: |

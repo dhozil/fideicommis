@@ -112,6 +112,9 @@ others did not:
 5. `python check_bundle_guard.py`. The reader's two server-only checks are one line
    of `server-only` away from becoming silent, and CI's version of them was
    checking the wrong thing until a build proved it.
+6. `python check_layout.py`. A layout can go cramped and still render perfectly — 200
+   on every page, nothing visibly broken — so the widths are asserted against the
+   built stylesheet.
 
 ## Known environment limits
 
