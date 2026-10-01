@@ -18,6 +18,7 @@ export function SiteFooter() {
       in the build.
       <div style={{ marginTop: 18, display: "flex", gap: 20, flexWrap: "wrap" }}>
         <Link href="/how-it-works">How a trust works</Link>
+        <Link href="/verify">Check it yourself</Link>
         <Link href="/about">What this is, and what it is not</Link>
         <Link href={EXPLORER_URL} rel="noreferrer noopener" target="_blank">
           Studionet explorer

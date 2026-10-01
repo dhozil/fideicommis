@@ -1,6 +1,6 @@
 import "server-only";
 
-import { readJSON } from "./genlayer";
+import { readMany, parseView } from "./genlayer";
 import type { FeaturedTrust, LifetimeFlow, OrgSummary } from "./types";
 
 // FeaturedTrust lives in types.ts, not here. This module is server-only because it
@@ -35,14 +35,17 @@ export async function readFeatured(address: string): Promise<FeaturedTrust> {
   };
 
   try {
-    const summary = await readJSON<OrgSummary>(address, "get_org_summary");
-    if (!summary || !summary.name) return blank;
-    let flow: LifetimeFlow | null = null;
-    try {
-      flow = await readJSON<LifetimeFlow>(address, "get_lifetime_flow");
-    } catch {
-      flow = null;
-    }
+    // Two views, one request. The summary carries the identity and the flow carries
+    // the balance, which is all a card or a hero needs.
+    const [summaryRaw, flowRaw] = await readMany(address, [
+      { method: "get_org_summary" },
+      { method: "get_lifetime_flow" },
+    ]);
+
+    if (!summaryRaw) return blank;
+    const summary = parseView<OrgSummary>(summaryRaw, "get_org_summary");
+    if (!summary?.name) return blank;
+
     return {
       address,
       name: String(summary.name),
@@ -51,7 +54,7 @@ export async function readFeatured(address: string): Promise<FeaturedTrust> {
       runway: Number(summary.runway_cycles ?? 0),
       charterVersion: Number(summary.charter_version ?? 0),
       cycle: Number(summary.cycle ?? 0),
-      flow,
+      flow: flowRaw ? parseView<LifetimeFlow>(flowRaw, "get_lifetime_flow") : null,
       reachable: true,
     };
   } catch {

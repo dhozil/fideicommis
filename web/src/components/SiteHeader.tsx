@@ -36,6 +36,7 @@ function Seal() {
 const LINKS = [
   { href: "/trusts", label: "Trusts" },
   { href: "/how-it-works", label: "How it works" },
+  { href: "/verify", label: "Check it yourself" },
   { href: "/about", label: "What this is" },
 ];
 
