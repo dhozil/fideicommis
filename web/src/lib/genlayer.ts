@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createClient, chains } from "genlayer-js";
+import { cached } from "./cache";
 
 /**
  * The GenLayer reader.
@@ -181,7 +182,9 @@ export async function readContract(
   method: string,
   args: unknown[] = [],
 ): Promise<unknown> {
-  return limited(() => readOnce(address, method, args));
+  return limited(() =>
+    cached(address, method, args, () => readOnce(address, method, args)),
+  );
 }
 
 export interface ReadSpec {
