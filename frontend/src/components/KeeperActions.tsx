@@ -238,7 +238,7 @@ function ResultPanel({ result }: { result: WriteResult }) {
  * matters.
  */
 function EquivalenceReport({ evidence }: { evidence: EquivalenceEvidence }) {
-  const { leaderOutput, agreed, validators, perValidator, leaderStatus } = evidence;
+  const { leaderOutput, leaderError, agreed, validators, perValidator, leaderStatus } = evidence;
   const unanimous = validators > 0 && agreed === validators;
   const split = validators > 0 && agreed < validators;
 
@@ -258,6 +258,14 @@ function EquivalenceReport({ evidence }: { evidence: EquivalenceEvidence }) {
           )}
           {leaderOutput !== null ? (
             <code className="equiv-output">{leaderOutput}</code>
+          ) : leaderError !== null ? (
+            // Shown as a reason, not a result. Rendering a rollback's payload under
+            // the same heading as a return value makes a failed write look like one
+            // that produced something.
+            <span className="equiv-error">
+              returned nothing — the engine said:{" "}
+              <code className="equiv-output">{leaderError}</code>
+            </span>
           ) : (
             <span className="faint">
               no value returned — this write does not return one

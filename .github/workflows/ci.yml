@@ -67,11 +67,11 @@ jobs:
 
       - name: typecheck
         run: npm run typecheck
-        working-directory: web
+        working-directory: frontend
 
       - name: build
         run: npm run build
-        working-directory: web
+        working-directory: frontend
         env:
           NEXT_TELEMETRY_DISABLED: "1"
 
@@ -144,8 +144,24 @@ jobs:
       - name: every explorer link is correct
         run: npx --yes tsx@4 tests/check_explorer.mts
 
-      - name: equivalence evidence survives real receipt shapes
+      - name: equivalence evidence survives every receipt shape
         run: npx --yes tsx@4 tests/check_equivalence.ts
+
+      # A test whose expectations are never compared passes whatever the code does.
+      # This one broke the parser four ways on purpose and required a failure each
+      # time, then restored the file byte-for-byte. It is slow, so it is not the
+      # check that gates the build, but without it "the expectations are asserted" is
+      # only an intention.
+      - name: the equivalence expectations can actually fail
+        run: python mutate_check.py
+
+      # Every working-directory in every workflow, resolved against the filesystem.
+      # The reader was renamed from web/ to frontend/ and three steps still named the
+      # old directory. A step whose directory is gone fails, so those three had been
+      # not running at all: typecheck, build, and the key-material guard. None of them
+      # reports that; they just stop, which is the failure mode worth testing for.
+      - name: every path CI depends on exists
+        run: python check_ci_paths.py
 
       - name: the documents agree with the contract
         run: python check_docs.py
@@ -154,7 +170,7 @@ jobs:
         run: python check_layout.py
 
       - name: no key material in the app
-        working-directory: web
+        working-directory: frontend
         run: |
           # The wallet module legitimately talks about keys it does not hold, so
           # the rule is narrower than a bare grep: nothing may read key material

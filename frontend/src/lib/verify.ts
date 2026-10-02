@@ -2,6 +2,7 @@ import "server-only";
 
 import { chains, createClient } from "genlayer-js";
 import type { OrgSummary } from "./types";
+import { equivalenceOf, hasConsensus, leaderSays, type EquivalenceEvidence } from "./equivalence";
 
 /**
  * Check a claim, yourself.
@@ -154,3 +155,88 @@ export async function verify(address: string): Promise<{
 
   return { rows, ids, isTrust, name };
 }
+
+/**
+ * A transaction's committee evidence, read from a hash the visitor supplied.
+ *
+ * This is the other half of the page. The table above proves the figures come from the
+ * contract; this proves the *writes* were decided by a committee rather than asserted by
+ * this site. Those are different claims and a project could honestly satisfy the first
+ * while quietly failing the second.
+ *
+ * The honesty problem is that every field here is something this reader chose to show.
+ * So three things are deliberately reported rather than inferred:
+ *
+ *   - `found` is false when the node does not know the hash at all, which is not the
+ *     same as a transaction that exists and did nothing.
+ *   - `ran` is false when there is no leader receipt, which is what a pending
+ *     transaction looks like. Reporting that as "0 of 0 agreed" would read as a
+ *     committee that refused, which is a completely different claim.
+ *   - `settled` comes from the leader's own words, not from the transaction status,
+ *     because FINALIZED is attached to rolled-back transactions too.
+ *
+ * A visitor can fetch the same hash and get the same receipt; that is the point.
+ */
+export interface TransactionReport {
+  found: boolean;
+  /** The node returned a receipt at all. */
+  ran: boolean;
+  /** The leader says it returned. The only honest test of whether a write happened. */
+  settled: boolean;
+  /** Why it is not settled, in the leader's own terms. Empty when it is. */
+  reason: string;
+  /** The status string the node attached, which may say FINALIZED over a rollback. */
+  status: string | null;
+  evidence: EquivalenceEvidence;
+  error: string | null;
+}
+
+export async function verifyTransaction(hash: string): Promise<TransactionReport> {
+  const digest = hash.trim();
+
+  const empty: TransactionReport = {
+    found: false,
+    ran: false,
+    settled: false,
+    reason: "",
+    status: null,
+    evidence: equivalenceOf(null),
+    error: null,
+  };
+
+  let receipt: unknown;
+  try {
+    receipt = await CLIENT.getTransactionReceipt({
+      hash: digest as `0x${string}`,
+    } as never);
+  } catch (err) {
+    return {
+      ...empty,
+      error: (err as Error).message.slice(0, 200),
+    };
+  }
+
+  if (receipt === null || receipt === undefined) {
+    return empty;
+  }
+
+  const ran = hasConsensus(receipt);
+  const verdict = leaderSays(receipt);
+  const status =
+    ((receipt as { transaction_info?: { state?: unknown } })?.transaction_info?.state as
+      | string
+      | undefined) ??
+    ((receipt as { status?: unknown })?.status as string | undefined) ??
+    null;
+
+  return {
+    found: true,
+    ran,
+    settled: ran && verdict.ok,
+    reason: verdict.reason,
+    status: status ? String(status) : null,
+    evidence: equivalenceOf(receipt),
+    error: null,
+  };
+}
+

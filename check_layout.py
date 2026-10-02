@@ -14,7 +14,15 @@ import urllib.request
 
 # The port comes from the caller, because a fixed one collides with a leaked server
 # from an earlier run and turns "the page did not answer" into a puzzle.
-BASE = os.environ.get("CHECK_BASE", "http://127.0.0.1:3170")
+#
+# The default was 3170, which is a port nothing in this project listens on. The reader
+# is started by `npm run dev` and `npm start`, both of which pass `--port 3000`, so the
+# default meant the check failed with "connection refused" unless the caller happened
+# to know the real port and set CHECK_BASE — and a check that needs undocumented
+# knowledge to run is a check nobody runs. It now names the port the reader actually
+# uses, and a production build still needs CHECK_BASE because `next start` can be given
+# a different one.
+BASE = os.environ.get("CHECK_BASE", "http://127.0.0.1:3000")
 
 PAGES = [
     "/",

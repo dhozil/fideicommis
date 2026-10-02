@@ -1168,6 +1168,17 @@ th.num {
   overflow: auto;
 }
 
+/*
+ * A rollback's reason. It is deliberately not `.equiv-output`: the box around a
+ * returned value and the box around an error are the same shape, and that is fine,
+ * but the wording beside it must not suggest a value came back.
+ */
+.equiv-error {
+  display: block;
+  color: var(--ink-dim);
+  margin-top: 6px;
+}
+
 .equiv-list {
   list-style: none;
   margin: 0;

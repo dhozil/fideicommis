@@ -2,6 +2,17 @@
 
 import { createClient, chains } from "genlayer-js";
 import { walletProvider } from "./wallet";
+import { equivalenceOf, leaderSays, type EquivalenceEvidence } from "./equivalence";
+
+/**
+ * The extractor lives in `./equivalence` so the server can use it too, which is what lets
+ * `/verify` show a stranger what a committee did rather than only letting the person
+ * who signed the transaction see it. It is re-exported because two callers outside this
+ * directory still import it from here, and a re-export is a smaller change than moving
+ * every one of them.
+ */
+export { equivalenceOf, leaderSays };
+export type { EquivalenceEvidence };
 
 /** The SDK does not export its client type by name, so it is derived. */
 type GenClient = ReturnType<typeof createClient>;
@@ -119,139 +130,6 @@ function hashOf(receipt: unknown): string | null {
   const r = receipt as Record<string, unknown> | null;
   const raw = r?.transaction_hash ?? r?.transactionHash ?? r?.hash ?? r?.to_transaction_hash;
   return raw === undefined || raw === null ? null : String(raw);
-}
-
-/**
- * What the Equivalence Principle actually did, as reported by the chain.
- *
- * A write that returns nothing but "it worked" asks the user to take the app's word
- * for it, and this is the one place in the whole project where the answer is worth
- * showing rather than summarising. Four things are here and they are the whole
- * mechanism:
- *
- *   - what the leader executed, as the returned value
- *   - what each validator independently re-derived
- *   - whether they agreed
- *   - the raw VM output, if there is any
- *
- * `eq_outputs` is the slot the node puts the leader's output in. It is empty on a
- * rollback, which is one of the more honest things about it: there is no value to show
- * because nothing ran.
- */
-export interface EquivalenceEvidence {
-  /** What the leader's execution returned, as text. */
-  leaderOutput: string | null;
-  /** How many validators agreed, and how many there were. */
-  agreed: number;
-  validators: number;
-  /** Every validator's execution result, in the order the node listed them. */
-  perValidator: { address: string; result: string; vote: string | null }[];
-  /** The VM's own stdout, when the node carries one. */
-  stdout: string | null;
-  /** The status string the node attached to the leader's result. */
-  leaderStatus: string | null;
-}
-
-function textOf(value: unknown): string | null {
-  if (value === undefined || value === null) return null;
-  if (typeof value === "string") return value;
-  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
-    return String(value);
-  }
-  try {
-    return JSON.stringify(value, null, 0) ?? null;
-  } catch {
-    return String(value);
-  }
-}
-
-/**
- * Pull the equivalence evidence out of a receipt.
- *
- * Everything is optional and everything degrades: a field the node does not carry
- * yields null or zero rather than an exception, because a receipt shape that gains a
- * key must not turn a settled transaction into a broken panel.
- */
-export function equivalenceOf(receipt: unknown): EquivalenceEvidence {
-  const data = (receipt as {
-    consensus_data?: {
-      leader_receipt?: {
-        eq_outputs?: unknown;
-        execution_result?: string;
-        genvm_result?: { stdout?: string; stderr?: string };
-        result?: { status?: string; payload?: unknown };
-      }[];
-      validators?: {
-        execution_result?: string;
-        vote?: string | null;
-        node_config?: { address?: string };
-      }[];
-      votes?: Record<string, string>;
-    };
-  })?.consensus_data;
-
-  const leader = data?.leader_receipt?.[0];
-  const validators = data?.validators ?? [];
-
-  // eq_outputs is a map of named outputs. One entry is the case worth reporting; more
-  // than one is shown in full rather than picked from.
-  const eqOutputs = leader?.eq_outputs;
-  let leaderOutput: string | null = null;
-  if (eqOutputs && typeof eqOutputs === "object" && !Array.isArray(eqOutputs)) {
-    const values = Object.values(eqOutputs as Record<string, unknown>).filter(
-      (value) => value !== undefined && value !== null && value !== "",
-    );
-    if (values.length === 1) leaderOutput = textOf(values[0]);
-    else if (values.length > 1) {
-      leaderOutput = Object.entries(eqOutputs as Record<string, unknown>)
-        .map(([key, value]) => `${key}: ${textOf(value)}`)
-        .join(" · ");
-    }
-  } else if (eqOutputs !== undefined && eqOutputs !== null) {
-    leaderOutput = textOf(eqOutputs);
-  }
-
-  // The leader's own payload is what it returned, when it returned one at all.
-  if (leaderOutput === null && leader?.result?.payload !== undefined) {
-    leaderOutput = textOf(leader.result.payload);
-  }
-
-  const perValidator = validators.map((validator) => ({
-    address: validator?.node_config?.address ?? "",
-    result: String(validator?.execution_result ?? "UNKNOWN"),
-    vote: validator?.vote ?? null,
-  }));
-
-  return {
-    leaderOutput,
-    agreed: perValidator.filter((v) => v.vote === "agree").length,
-    validators: perValidator.length,
-    perValidator,
-    stdout: leader?.genvm_result?.stdout || null,
-    leaderStatus: leader?.result?.status ?? null,
-  };
-}
-
-/**
- * The engine's own answer about whether the leader returned. A transaction can
- * reach FINALIZED and still have rolled back, so this is the only honest test.
- */
-function leaderSays(receipt: unknown): { ok: boolean; reason: string } {
-  const leader = (receipt as { consensus_data?: { leader_receipt?: { execution_result?: string; error_code?: number; result?: { status?: string; payload?: unknown } }[] } })
-    ?.consensus_data?.leader_receipt?.[0];
-  if (!leader) return { ok: false, reason: "no leader receipt in the response" };
-  const status = leader.result?.status;
-  if (leader.execution_result === "SUCCESS" && (status === undefined || status === "return")) return { ok: true, reason: "" };
-  const parts: string[] = [];
-  if (leader.execution_result && leader.execution_result !== "SUCCESS") parts.push(`execution_result=${leader.execution_result}`);
-  if (leader.error_code) parts.push(`error_code=${leader.error_code}`);
-  if (status) parts.push(`result=${status}`);
-  const payload = leader.result?.payload;
-  if (payload !== undefined && payload !== null) {
-    const text = typeof payload === "string" ? payload : JSON.stringify(payload);
-    parts.push(`payload=${text.slice(0, 300)}`);
-  }
-  return { ok: false, reason: parts.join(" | ") || "the leader did not return" };
 }
 
 async function submit(
