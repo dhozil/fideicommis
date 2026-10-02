@@ -1,10 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AddressForm } from "@/components/AddressForm";
-import { verify } from "@/lib/verify";
-import { isAddress } from "@/lib/address";
+import { verify, verifyTransaction } from "@/lib/verify";
+import { isAddress, isTxHash } from "@/lib/address";
 import { FEATURED_TRUST } from "@/lib/registry";
-import { addressOnExplorer } from "@/lib/explorer";
+import { addressOnExplorer, shortHash, txOnExplorer } from "@/lib/explorer";
+import { TxHashForm } from "@/components/TxHashForm";
+import { TxEvidence } from "@/components/TxEvidence";
+import type { TransactionReport } from "@/lib/verify";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -32,14 +35,18 @@ export const metadata: Metadata = {
 export default async function VerifyPage({
   searchParams,
 }: {
-  searchParams: Promise<{ address?: string }>;
+  searchParams: Promise<{ address?: string; tx?: string }>;
 }) {
-  const { address } = await searchParams;
+  const { address, tx } = await searchParams;
   const requested = (address ?? "").trim();
   const usable = isAddress(requested);
   const target = usable ? requested : FEATURED_TRUST;
 
   const report = usable ? await verify(target) : null;
+
+  const wantedTx = (tx ?? "").trim();
+  const txUsable = isTxHash(wantedTx);
+  const txReport: TransactionReport | null = txUsable ? await verifyTransaction(wantedTx) : null;
 
   return (
     <main id="main">
@@ -65,6 +72,25 @@ export default async function VerifyPage({
             called. Showing the reference trust instead, below.
           </p>
         ) : null}
+      </section>
+
+      <section className="panel" style={{ marginTop: 20 }}>
+        <TxHashForm label="Or read one transaction's committee evidence" />
+        {tx ? null : (
+          <p className="muted" style={{ marginTop: 14, fontSize: "0.9rem" }}>
+            The table below proves the figures come from the contract. This proves the
+            <em> writes</em> were decided by a committee — a different claim, and one a
+            project could honestly pass while quietly failing it.
+          </p>
+        )}
+        {tx && !txUsable ? (
+          <p className="notice bad" style={{ marginTop: 16 }}>
+            <strong>That is not a transaction hash.</strong> A GenLayer hash is{" "}
+            <code>0x</code> followed by 64 hexadecimal characters, and nothing was
+            fetched.
+          </p>
+        ) : null}
+        {txReport ? <TxEvidence report={txReport} hash={wantedTx} /> : null}
       </section>
 
       {report ? (
@@ -168,6 +194,17 @@ export default async function VerifyPage({
               the same buckets, this page is telling the truth about that figure. Note
               that a browser-like User-Agent is required, or Cloudflare answers with
               error 1010.
+            </div>
+            <div className="notice warn" style={{ maxWidth: "72ch", marginTop: 12 }}>
+              <strong>How to reproduce a transaction&apos;s verdict.</strong> Send{" "}
+              <code>gen_getTransactionReceipt</code> for the hash and read{" "}
+              <code>consensus_data.leader_receipt[0]</code>. Four things decide what
+              the panel above said: <code>execution_result</code> says whether the leader
+              ran, <code>result.status</code> says whether it returned,{" "}
+              <code>eq_outputs</code> holds the value, and{" "}
+              <code>consensus_data.validators[].vote</code> is what &ldquo;N of M
+              agreed&rdquo; counts. The transaction&apos;s own status field is not among
+              them, because a rollback carries FINALIZED too.
             </div>
             <p className="muted" style={{ marginTop: 18 }}>
               <Link href={`/trust/${target}`}>

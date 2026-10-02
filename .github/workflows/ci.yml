@@ -155,6 +155,12 @@ jobs:
       - name: the equivalence expectations can actually fail
         run: python mutate_check.py
 
+      # A page that reports a rejection for a transaction the node has never heard of
+      # is the failure mode this project exists to avoid, and it is a rendering bug
+      # rather than a parser bug, so it is checked where the verdicts are decided.
+      - name: the transaction panel keeps its four verdicts apart
+        run: npx --yes tsx@4 tests/check_tx_verdict.mts
+
       # Every working-directory in every workflow, resolved against the filesystem.
       # The reader was renamed from web/ to frontend/ and three steps still named the
       # old directory. A step whose directory is gone fails, so those three had been

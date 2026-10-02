@@ -260,6 +260,14 @@ So any claim on any page can be checked by making the same call yourself — and
 [`/verify`](frontend/src/app/verify/page.tsx) exists to make that literally true. It lists
 the complete call surface and shows what each method returned just now, as raw values.
 
+It also takes a transaction hash. The figures above are claims about state; a hash is a
+claim about a decision — whether a write settled, whether a committee was unanimous, and
+whether the status field agreed. That evidence was previously visible only to whoever
+signed the write, which is the wrong audience for it. It keeps four outcomes apart on
+purpose: *no record*, *not yet decided*, *rolled back*, and *settled*. A node answering
+"no record" for a hash it has never seen is not a committee rejecting anything, and the
+page says so rather than letting the absence read as a verdict.
+
 Five pages:
 
 | Route | What it is for |
@@ -268,7 +276,7 @@ Five pages:
 | `/trusts` | the directory of trusts, kept in this repo rather than on chain |
 | `/trust/[address]` | the full record: ledger, constitution, rulebook, every decision |
 | `/how-it-works` | the mechanism, in the order it happens |
-| `/verify` | every call this reader makes, and what it returned |
+| `/verify` | every call this reader makes and what it returned; `?tx=` reads one transaction's committee evidence |
 | `/about` | what this is, and the limits it does not remove |
 
 Three behaviours worth naming, because they are the ones that make it worth reading:

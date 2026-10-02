@@ -16,3 +16,17 @@ const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 export function isAddress(value: string): boolean {
   return ADDRESS.test(value.trim());
 }
+
+/**
+ * Transaction-hash shape.
+ *
+ * 32 bytes of hex, so 0x and 64 characters. It is a shape check and nothing more —
+ * whether a hash names a transaction this node has heard of is a question about the
+ * chain, and only the server can answer it. A visitor pasting a hash gets either a
+ * report or "the node has no record of this", never a guess.
+ */
+const HASH = /^0x[0-9a-fA-F]{64}$/;
+
+export function isTxHash(value: string): boolean {
+  return HASH.test(value.trim());
+}
