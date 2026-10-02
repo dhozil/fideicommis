@@ -145,7 +145,7 @@ scripts/
   studionet.cjs                  shared Studionet driver: pacing, execution checks, deploy, write
   run_mission_loop.cjs           funding, burn, keeper reimbursement, dormancy, revival
   run_proposal_flow.cjs         rejection path, then the full money path
-web/                           the audit reader: Next.js, optional wallet, holds no key
+frontend/                           the audit reader: Next.js, optional wallet, holds no key
 deploy/deployScript.ts         one command: deploy a trust, then read it back
 tools/run_glsim_windows.py     the Windows glsim workarounds
   run_fideicommis.cjs         the three core claims: acts by itself, pays a non member, amends itself
@@ -164,11 +164,11 @@ python -m pytest -v
 for f in scripts/*.cjs; do node --check "$f"; done
 
 # the reader. The repo is an npm workspace, so install from the root: running
-# npm ci inside web/ installs only that member and skips the hoisting that lets
+# npm ci inside frontend/ installs only that member and skips the hoisting that lets
 # `next build` find react at all.
 npm ci
-npm run typecheck --workspace web
-npm run build --workspace web
+npm run typecheck --workspace frontend
+npm run build --workspace frontend
 ```
 
 Expect `117 passed, 8 skipped`. The skips are the integration tests, which skip
@@ -986,10 +986,10 @@ npm run dev            # http://localhost:3000
 ```
 
 ```
-web/src/app/                 App Router: landing, /trust/[address], /api/health
-web/src/lib/genlayer.ts      the chain client: paced, keyless, read-only
-web/src/lib/trust.ts         one pass over a trust, degraded rather than broken
-web/src/components/          conservation, gauges, decision chain, panels
+frontend/src/app/                 App Router: landing, /trust/[address], /api/health
+frontend/src/lib/genlayer.ts      the chain client: paced, keyless, read-only
+frontend/src/lib/trust.ts         one pass over a trust, degraded rather than broken
+frontend/src/components/          conservation, gauges, decision chain, panels
 ```
 
 Next.js 16, React 19, TypeScript strict with `noUncheckedIndexedAccess`. It holds

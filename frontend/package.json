@@ -1,5 +1,5 @@
 {
-  "name": "fideicommis-web",
+  "name": "fideicommis-frontend",
   "version": "0.6.0",
   "private": true,
   "description": "Audit reader for a Fideicommis on GenLayer. Read-only: it calls the contract's view methods and never signs.",

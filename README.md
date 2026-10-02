@@ -231,7 +231,7 @@ tests/
   integration/
     test_consensus.py         the same flows through a real validator committee
 
-web/                          the audit reader, Next.js 16 App Router
+frontend/                          the audit reader, Next.js 16 App Router
 deploy/deployScript.ts        one command: deploy, then read it back
 scripts/                      Studionet drivers with receipt-hash correlation
 tools/run_glsim_windows.py    the Windows glsim workarounds
@@ -250,14 +250,14 @@ the classes was never available.
 
 ## The reader
 
-A trust that cannot explain a decision cannot be audited. `web/` is that audit record,
+A trust that cannot explain a decision cannot be audited. `frontend/` is that audit record,
 and its strongest claim is a negative one:
 
 > It signs nothing, holds no key, and every figure it shows is a call to the trust's
 > own `get_*` method.
 
 So any claim on any page can be checked by making the same call yourself — and
-[`/verify`](web/src/app/verify/page.tsx) exists to make that literally true. It lists
+[`/verify`](frontend/src/app/verify/page.tsx) exists to make that literally true. It lists
 the complete call surface and shows what each method returned just now, as raw values.
 
 Five pages:
@@ -398,8 +398,8 @@ For the reader:
 
 ```bash
 npm ci                                  # an npm workspace: install from the root
-npm run typecheck --workspace web
-npm run build --workspace web
+npm run typecheck --workspace frontend
+npm run build --workspace frontend
 python check_bundle_guard.py
 python check_layout.py
 ```
@@ -434,7 +434,7 @@ enforce is already in the source.
   the contract. Nobody independent has read it. A test suite can be wrong, and 117 of
   them agreeing proves only that they agree.
 
-The full statement of limits is at [`/about`](web/src/app/about/page.tsx), and
+The full statement of limits is at [`/about`](frontend/src/app/about/page.tsx), and
 [`SECURITY.md`](SECURITY.md) separates what the contract enforces without trust in the
 operator from what no contract here can enforce for you.
 

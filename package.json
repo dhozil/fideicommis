@@ -4,14 +4,14 @@
   "private": true,
   "description": "An autonomous trust on GenLayer, and the reader that audits it.",
   "workspaces": [
-    "web"
+    "frontend"
   ],
   "scripts": {
-    "dev": "npm run dev --workspace web",
-    "build": "npm run build --workspace web",
-    "start": "npm run start --workspace web",
-    "typecheck": "npm run typecheck --workspace web",
-    "lint": "npm run lint --workspace web",
+    "dev": "npm run dev --workspace frontend",
+    "build": "npm run build --workspace frontend",
+    "start": "npm run start --workspace frontend",
+    "typecheck": "npm run typecheck --workspace frontend",
+    "lint": "npm run lint --workspace frontend",
     "test:integration": "python -m pytest tests/integration -v",
     "glsim": "python tools/run_glsim_windows.py --port 4000 --validators 5 --no-browser",
     "check:docs": "python check_docs.py",

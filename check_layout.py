@@ -7,11 +7,14 @@ is what this checks.
 """
 
 import glob
+import os
 import re
 import sys
 import urllib.request
 
-BASE = "http://127.0.0.1:3170"
+# The port comes from the caller, because a fixed one collides with a leaked server
+# from an earlier run and turns "the page did not answer" into a puzzle.
+BASE = os.environ.get("CHECK_BASE", "http://127.0.0.1:3170")
 
 PAGES = [
     "/",
@@ -58,7 +61,7 @@ print("=== structural checks on the built CSS ===")
 # The stylesheet is emitted under static/chunks, not static/css. An earlier version
 # of this check looked in static/css, found nothing, and reported five failures that
 # were the check's own path being wrong rather than the layout being wrong.
-candidates = glob.glob("web/.next/**/*.css", recursive=True)
+candidates = glob.glob("frontend/.next/**/*.css", recursive=True)
 if not candidates:
     print("  FAIL no stylesheet was emitted at all")
     sys.exit(1)

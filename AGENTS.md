@@ -7,7 +7,7 @@
 - Primary language for the contract: Python, executed in GenVM
 - Primary chain: GenLayer, Studionet for verification
 - Pinned runner: `py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6`
-- Frontend: Next.js 16 App Router in `web/`, read-only with an optional wallet
+- Frontend: Next.js 16 App Router in `frontend/`, read-only with an optional wallet
 
 ## What this is
 
@@ -76,7 +76,7 @@ FINDINGS.md    the record of what was wrong and what closed it
 contracts/     the contract. one file.
 tests/         direct mode (no network), plus integration for a real node
 scripts/       Studionet drivers, all sharing scripts/studionet.cjs
-web/           the audit reader
+frontend/           the audit reader
 deploy/        deployScript.ts
 tools/         run_glsim_windows.py
 ```

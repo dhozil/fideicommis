@@ -183,7 +183,7 @@ export default async function VerifyPage({
             There are twelve view methods in use, listed above with a live call. There
             is no method on this site that the table does not name, and a method not in
             the table is not called: that can be checked by looking for{" "}
-            <code>get_</code> in <code>web/src/lib/</code>.
+            <code>get_</code> in <code>frontend/src/lib/</code>.
           </p>
           <p>
             It is also worth being precise about what that proves. It proves the

@@ -55,12 +55,12 @@ jobs:
           node-version: "24"
           cache: npm
           # The repo is an npm workspace, so there is exactly one lockfile and it
-          # lives at the root. Caching web/package-lock.json here silently fell
+          # lives at the root. Caching frontend/package-lock.json here silently fell
           # back to no cache the moment the workspace was introduced, and the
           # install ran un-cached rather than failing, which is the worse outcome.
           cache-dependency-path: package-lock.json
 
-      # Install from the root, not from web/. Running npm ci inside a workspace
+      # Install from the root, not from frontend/. Running npm ci inside a workspace
       # member installs only that member's own dependencies and skips the
       # hoisting that makes `next run build` work from here.
       - run: npm ci
@@ -75,12 +75,12 @@ jobs:
         env:
           NEXT_TELEMETRY_DISABLED: "1"
 
-      # Both checks read from web/. They are the last two steps on purpose: the
+      # Both checks read from frontend/. They are the last two steps on purpose: the
       # bundle check is only meaningful once a build has produced .next.
       #
       # `server-only` is the mechanism that keeps the reader out of the browser, and
       # it is enforced by the compiler, not by this step. A client component that
-      # imports web/src/lib/trust.ts fails the build outright, with the error
+      # imports frontend/src/lib/trust.ts fails the build outright, with the error
       # "You're importing a module that depends on server-only". That was verified by
       # writing exactly that component and watching the build fail.
       #
@@ -104,7 +104,7 @@ jobs:
 
       - name: the server-only reader is marked server-only
         run: |
-          for f in web/src/lib/genlayer.ts web/src/lib/trust.ts web/src/lib/featured.ts; do
+          for f in frontend/src/lib/genlayer.ts frontend/src/lib/trust.ts frontend/src/lib/featured.ts; do
             if ! grep -q '^import "server-only";' "$f"; then
               echo "::error::$f no longer imports server-only; the chain reader could be bundled into the browser"
               exit 1
@@ -118,7 +118,7 @@ jobs:
           # component importing a component that imports the reader, so the
           # transitive case is checked here: every file that reaches trust.ts or
           # genlayer.ts must itself be free of "use client".
-          for f in $(grep -rlE '@/lib/(trust|genlayer|featured)|from "\./(trust|genlayer|featured)"' web/src); do
+          for f in $(grep -rlE '@/lib/(trust|genlayer|featured)|from "\./(trust|genlayer|featured)"' frontend/src); do
             if head -1 "$f" | grep -q "use client"; then
               echo "::error::$f is a client component and reaches the server-only chain reader"
               exit 1

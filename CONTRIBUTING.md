@@ -20,14 +20,14 @@ test is not a passing test, and the README says so.
 genvm-lint check contracts/fideicommis.py
 python -m pytest -q
 for f in scripts/*.cjs; do node --check "$f"; done
-npm run typecheck --workspace web
-npm run build --workspace web
+npm run typecheck --workspace frontend
+npm run build --workspace frontend
 python check_bundle_guard.py
 python check_layout.py
 ```
 
 CI runs all seven. The npm commands install and run from the repository root because
-it is an npm workspace: `npm ci` inside `web/` installs only that member and skips
+it is an npm workspace: `npm ci` inside `frontend/` installs only that member and skips
 the hoisting that lets `next build` find react at all.
 
 `check_bundle_guard.py` is the local copy of CI's two server-only checks. It exists
