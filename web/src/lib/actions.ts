@@ -28,7 +28,79 @@ export type WriteResult =
   | { ok: true; hash: string }
   | { ok: false; phase: "submit" | "receipt" | "execute" | "rejected"; reason: string; hash?: string };
 
+/**
+ * How far along a write is, reported as it happens.
+ *
+ * This exists because the two waits below answer different questions and the user
+ * should be able to tell them apart. `sent` means the node has the transaction and
+ * nothing has settled. `settling` means consensus is running, which on Studionet takes
+ * a minute or two and looks identical to a hang if the page says nothing.
+ */
+export type WriteStage = "sending" | "in-consensus";
+
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
+
+/**
+ * The two status waits, and why there are two.
+ *
+ * GenLayer has seven transaction statuses — UNINITIALIZED, PENDING, PROPOSING,
+ * COMMITTING, REVEALING, ACCEPTED, UNDETERMINED, FINALIZED — and ACCEPTED sits before
+ * the consensus stages finish. So waiting only for ACCEPTED answers "does the node have
+ * this transaction", not "did it happen", and this project's own rule is the reason that
+ * matters: a transaction can reach FINALIZED and still have rolled back, and only
+ * consensus_data.leader_receipt[0].result.payload says which.
+ *
+ * Whether an ACCEPTED receipt already carries a leader receipt was not measured here,
+ * because Studionet had no transactions in the last twelve blocks to inspect and an
+ * honest answer would not be a guess. It does not need to be: the UI does not claim a
+ * conclusion on ACCEPTED either way. It waits for FINALIZED, and only then reads the
+ * leader receipt. That is correct whether or not ACCEPTED would have been enough.
+ *
+ * ACCEPTED is still waited for, because it is the fast failure. A wallet rejection, a
+ * bad argument or a missing balance surfaces there in a second, rather than after two
+ * minutes of a spinner.
+ */
+async function settle(
+  client: GenClient,
+  hash: string,
+  onStage?: (stage: WriteStage) => void,
+): Promise<{ ok: true; receipt: unknown } | { ok: false; phase: "receipt" | "execute"; reason: string }> {
+  const wait = (status: string, retries: number) =>
+    client.waitForTransactionReceipt({
+      hash: hash as unknown as Parameters<GenClient["waitForTransactionReceipt"]>[0]["hash"],
+      status: status as never,
+      interval: 4000,
+      retries,
+    }) as Promise<unknown>;
+
+  try {
+    await wait("ACCEPTED", 30);
+  } catch (err) {
+    return { ok: false, phase: "receipt", reason: (err as Error).message };
+  }
+
+  onStage?.("in-consensus");
+
+  let receipt: unknown;
+  try {
+    // 150 retries at four seconds is ten minutes, which is well past a Studionet
+    // consensus and still short of a user deciding the page is broken.
+    receipt = await wait("FINALIZED", 150);
+  } catch (err) {
+    return { ok: false, phase: "receipt", reason: (err as Error).message };
+  }
+
+  const seen = hashOf(receipt);
+  if (seen && seen.toLowerCase() !== hash.toLowerCase()) {
+    return {
+      ok: false,
+      phase: "receipt",
+      reason: `the receipt is for another transaction: ${seen} != ${hash}`,
+    };
+  }
+
+  return { ok: true, receipt };
+}
 
 function clientFor(address?: string): GenClient {
   const provider = walletProvider() as never;
@@ -69,7 +141,7 @@ async function submit(
   address: string,
   method: string,
   args: unknown[],
-  opts: { value?: bigint; from?: string } = {},
+  opts: { value?: bigint; from?: string; onStage?: (stage: WriteStage) => void } = {},
 ): Promise<WriteResult> {
   if (!ADDRESS.test(address)) return { ok: false, phase: "rejected", reason: "That is not a contract address" };
   const client = clientFor(opts.from);
@@ -86,24 +158,14 @@ async function submit(
     return { ok: false, phase: "submit", reason: (err as Error).message };
   }
 
-  let receipt: unknown;
-  try {
-    receipt = await client.waitForTransactionReceipt({
-      hash: hash as unknown as Parameters<GenClient["waitForTransactionReceipt"]>[0]["hash"],
-      status: "ACCEPTED" as never,
-      interval: 4000,
-      retries: 120,
-    });
-  } catch (err) {
-    return { ok: false, phase: "receipt", reason: (err as Error).message, hash };
-  }
+  opts.onStage?.("sending");
 
-  const seen = hashOf(receipt);
-  if (seen && seen.toLowerCase() !== hash.toLowerCase()) {
-    return { ok: false, phase: "receipt", reason: `the receipt is for another transaction: ${seen} != ${hash}`, hash };
-  }
+  const settled = await settle(client, hash, opts.onStage);
+  if (!settled.ok) return { ok: false, phase: settled.phase, reason: settled.reason, hash };
 
-  const verdict = leaderSays(receipt);
+  // Only now, on a FINALIZED receipt, is the leader receipt the authority on whether
+  // this happened. A rollback here is a real outcome and is reported as one.
+  const verdict = leaderSays(settled.receipt);
   if (!verdict.ok) return { ok: false, phase: "execute", reason: verdict.reason, hash };
   return { ok: true, hash };
 }
@@ -115,10 +177,12 @@ async function submit(
  * -------------------------------------------------------------------------- */
 
 /** Anyone may run the cycle. The trust pays the caller. */
-export const advanceCycle = (trust: string, from?: string) => submit(trust, "advance_cycle", [], { from });
+export const advanceCycle = (trust: string, from?: string, onStage?: (stage: WriteStage) => void) =>
+  submit(trust, "advance_cycle", [], { from, onStage });
 
 /** Anyone may fund it, and funding revives a dormant trust permanently. */
-export const fund = (trust: string, amount: bigint, from?: string) => submit(trust, "fund", [], { value: amount, from });
+export const fund = (trust: string, amount: bigint, from?: string, onStage?: (stage: WriteStage) => void) =>
+  submit(trust, "fund", [], { value: amount, from, onStage });
 
 /** Operational policy: what burns, what a keeper is paid, how often. */
 export const setPolicy = (trust: string, burn: bigint, keeper: bigint, tick: number, from?: string) =>
