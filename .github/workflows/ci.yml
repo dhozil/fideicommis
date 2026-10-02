@@ -138,6 +138,12 @@ jobs:
       # summary, so it has to survive the shapes a receipt really arrives in. The
       # cases include a rolled-back deployment that happened on Studionet during
       # development, a split committee, and null.
+      # A link that 404s is worse than no link: it looks like the project is making an
+      # unverifiable claim and then sending you nowhere to check it. The routes were
+      # confirmed against the live explorer; /transaction/ and /account/ both 404 there.
+      - name: every explorer link is correct
+        run: npx --yes tsx@4 tests/check_explorer.mts
+
       - name: equivalence evidence survives real receipt shapes
         run: npx --yes tsx@4 tests/check_equivalence.ts
 

@@ -25,9 +25,10 @@ npm run build --workspace frontend
 python check_bundle_guard.py
 python check_layout.py
 npx tsx@4 tests/check_equivalence.ts
+npx tsx@4 tests/check_explorer.mts
 ```
 
-CI runs all eight. The npm commands install and run from the repository root because
+CI runs all nine. The npm commands install and run from the repository root because
 it is an npm workspace: `npm ci` inside `frontend/` installs only that member and skips
 the hoisting that lets `next build` find react at all.
 

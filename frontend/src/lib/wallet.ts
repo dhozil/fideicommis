@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient, chains } from "genlayer-js";
 import { createWalletClient, custom, type WalletClient } from "viem";
+import { EXPLORER_URL } from "./explorer";
 
 /**
  * Wallet connection, EIP-6963.
@@ -34,7 +35,13 @@ const NETWORK = {
     decimals: 18,
   },
   rpcUrls: [RPC_URL],
-  blockExplorerUrls: process.env.NEXT_PUBLIC_EXPLORER_URL ? [process.env.NEXT_PUBLIC_EXPLORER_URL] : [],
+  // This was `[process.env.NEXT_PUBLIC_EXPLORER_URL].filter(Boolean)`, which is an
+  // empty list unless a deployment sets the variable — so a wallet that had not
+  // added this chain itself would show it with no "View on explorer" link, and the
+  // one thing a user needs after a transaction is somewhere to look the transaction
+  // up. It now defaults to the real explorer, and the same constant the reader links
+  // to is the one handed to the wallet, so the two cannot disagree.
+  blockExplorerUrls: [EXPLORER_URL],
 };
 
 type Provider = {
