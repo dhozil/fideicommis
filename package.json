@@ -13,7 +13,10 @@
     "typecheck": "npm run typecheck --workspace web",
     "lint": "npm run lint --workspace web",
     "test:integration": "python -m pytest tests/integration -v",
-    "glsim": "python tools/run_glsim_windows.py --port 4000 --validators 5 --no-browser"
+    "glsim": "python tools/run_glsim_windows.py --port 4000 --validators 5 --no-browser",
+    "check:docs": "python check_docs.py",
+    "check:layout": "python check_layout.py",
+    "check": "python check_docs.py && python check_layout.py && python check_bundle_guard.py"
   },
   "engines": {
     "node": ">=20"

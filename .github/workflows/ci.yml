@@ -130,6 +130,13 @@ jobs:
       # 200 and still looks plausible, just narrow. This asserts the widths and the
       # gutter track are still in the built stylesheet, and that the two old cramped
       # values have not come back.
+      # A README and a findings file that drift apart are worse than one document:
+      # the reader has no way to tell which to believe. This asserts the figures the
+      # two documents share against the contract itself, so a renamed method or a
+      # changed hard limit fails here rather than in a reader's trust.
+      - name: the documents agree with the contract
+        run: python check_docs.py
+
       - name: the layout uses the width it is given
         run: python check_layout.py
 

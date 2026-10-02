@@ -71,6 +71,8 @@ encodes:
 ## Layout
 
 ```
+README.md      the overview: what it is, how it works, what is guaranteed
+FINDINGS.md    the record of what was wrong and what closed it
 contracts/     the contract. one file.
 tests/         direct mode (no network), plus integration for a real node
 scripts/       Studionet drivers, all sharing scripts/studionet.cjs
@@ -109,10 +111,13 @@ others did not:
 4. For the reader, a screenshot. Both of its bugs were things only a rendered
    page showed: a cache-truncated label and a 500 where a 404 was the honest
    answer.
-5. `python check_bundle_guard.py`. The reader's two server-only checks are one line
+5. `python check_docs.py`. Two documents that quote the same figures drift apart, and
+   a reader has no way to tell which one to believe. The method count, the field count,
+   the hard limits and every internal link are asserted against the contract.
+6. `python check_bundle_guard.py`. The reader's two server-only checks are one line
    of `server-only` away from becoming silent, and CI's version of them was
    checking the wrong thing until a build proved it.
-6. `python check_layout.py`. A layout can go cramped and still render perfectly — 200
+7. `python check_layout.py`. A layout can go cramped and still render perfectly — 200
    on every page, nothing visibly broken — so the widths are asserted against the
    built stylesheet.
 
