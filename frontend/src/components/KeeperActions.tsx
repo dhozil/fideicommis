@@ -2,7 +2,14 @@
 
 import { useState } from "react";
 import { useWallet } from "@/lib/wallet";
-import { advanceCycle, fund, parseGen, type WriteResult, type WriteStage } from "@/lib/actions";
+import {
+  advanceCycle,
+  fund,
+  parseGen,
+  type EquivalenceEvidence,
+  type WriteResult,
+  type WriteStage,
+} from "@/lib/actions";
 import { txOnExplorer, shortHash } from "@/lib/explorer";
 
 /**
@@ -182,6 +189,7 @@ function ResultPanel({ result }: { result: WriteResult }) {
           Consensus finished and the leader returned, so the trust has acted. The
           reader will show it on the next load.
         </p>
+        <EquivalenceReport evidence={result.equivalence} />
         <ExplorerLink hash={result.hash} />
       </div>
     );
@@ -207,7 +215,102 @@ function ResultPanel({ result }: { result: WriteResult }) {
           ? "A transaction can reach FINALIZED and still have rolled back. The chain said:"
           : result.reason}
       </p>
+      {/* Shown on a rollback too, and that is the point: a user who just lost a
+          transaction is exactly the user who needs to see what the committee did,
+          not a summary that the app could have invented. */}
+      {result.equivalence ? <EquivalenceReport evidence={result.equivalence} /> : null}
       {result.hash ? <ExplorerLink hash={result.hash} /> : null}
+    </div>
+  );
+}
+
+/**
+ * The Equivalence Principle, in the words the node used.
+ *
+ * This exists because "it worked" is a claim and the user cannot check it. What is
+ * shown instead is the mechanism: the leader's output, how many validators
+ * independently arrived at the same thing, and each one's own result. A reader can
+ * count the validators and compare them, which is the whole point of the principle
+ * being visible rather than asserted.
+ *
+ * Nothing here is interpreted. If the node reports no output, this says so, because an
+ * empty field and a successful one look identical otherwise and the difference
+ * matters.
+ */
+function EquivalenceReport({ evidence }: { evidence: EquivalenceEvidence }) {
+  const { leaderOutput, agreed, validators, perValidator, leaderStatus } = evidence;
+  const unanimous = validators > 0 && agreed === validators;
+  const split = validators > 0 && agreed < validators;
+
+  return (
+    <div className="equiv">
+      <h5>Equivalence Principle</h5>
+
+      <dl>
+        <dt>Leader</dt>
+        <dd>
+          {leaderStatus ? (
+            <span className={`mark ${leaderStatus === "return" ? "compliant" : "non-compliant"}`}>
+              {leaderStatus}
+            </span>
+          ) : (
+            <span className="mark unknown">no status</span>
+          )}
+          {leaderOutput !== null ? (
+            <code className="equiv-output">{leaderOutput}</code>
+          ) : (
+            <span className="faint">
+              no value returned — this write does not return one
+            </span>
+          )}
+        </dd>
+
+        <dt>Validators</dt>
+        <dd>
+          {validators > 0 ? (
+            <>
+              <span className={`mark ${unanimous ? "compliant" : split ? "non-compliant" : "pending"}`}>
+                {agreed} of {validators} agreed
+              </span>
+              {!unanimous ? (
+                <span className="faint">
+                  {" "}
+                  A split means this transaction was decided by the round, not by
+                  unanimity, and the leader's output is not something every validator
+                  reproduced.
+                </span>
+              ) : null}
+            </>
+          ) : (
+            <span className="faint">the node reported no validators for this one</span>
+          )}
+        </dd>
+      </dl>
+
+      {perValidator.length ? (
+        <>
+          <h5>What each validator executed</h5>
+          <ul className="equiv-list">
+            {perValidator.map((validator, index) => (
+              <li key={`${validator.address}-${index}`}>
+                <span className="data faint">{validator.address.slice(0, 12) || `#${index + 1}`}</span>
+                <span
+                  className={`mark ${
+                    validator.result === "SUCCESS"
+                      ? "compliant"
+                      : validator.result === "ERROR"
+                        ? "non-compliant"
+                        : "pending"
+                  }`}
+                >
+                  {validator.result.toLowerCase()}
+                </span>
+                {validator.vote ? <span className="faint">voted {validator.vote}</span> : null}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
     </div>
   );
 }

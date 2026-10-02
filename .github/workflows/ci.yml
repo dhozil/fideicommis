@@ -134,6 +134,13 @@ jobs:
       # the reader has no way to tell which to believe. This asserts the figures the
       # two documents share against the contract itself, so a renamed method or a
       # changed hard limit fails here rather than in a reader's trust.
+      # The write path reports the chain's own consensus output rather than a
+      # summary, so it has to survive the shapes a receipt really arrives in. The
+      # cases include a rolled-back deployment that happened on Studionet during
+      # development, a split committee, and null.
+      - name: equivalence evidence survives real receipt shapes
+        run: npx --yes tsx@4 tests/check_equivalence.ts
+
       - name: the documents agree with the contract
         run: python check_docs.py
 

@@ -1103,6 +1103,107 @@ th.num {
   flex-wrap: wrap;
 }
 
+/* The equivalence report.
+ *
+ * This is the one place in the interface where the chain's own words are shown rather
+ * than a summary of them, so it is typeset as a document: a definition list of facts,
+ * then the per-validator rows underneath. It sits inside the result panel because it
+ * is part of the outcome, not a footnote on it.
+ */
+.equiv {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--rule-strong);
+}
+
+.equiv h5 {
+  margin: 0 0 10px;
+  font-family: var(--data);
+  font-size: 0.66rem;
+  font-weight: 400;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.equiv dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 10px 14px;
+  align-items: baseline;
+}
+
+.equiv dt {
+  font-family: var(--data);
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.equiv dd {
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--ink-dim);
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.equiv-output {
+  display: block;
+  width: 100%;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  background: var(--ground);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  padding: 8px 10px;
+  margin-top: 4px;
+  font-size: 0.78rem;
+  max-height: 160px;
+  overflow: auto;
+}
+
+.equiv-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.equiv-list li {
+  display: grid;
+  grid-template-columns: 84px auto 1fr;
+  gap: 10px;
+  align-items: baseline;
+  padding: 6px 0;
+  border-top: 1px solid var(--rule);
+  font-size: 0.78rem;
+}
+
+.equiv-list li .faint {
+  font-size: 0.76rem;
+}
+
+@media (max-width: 520px) {
+  .equiv dl {
+    grid-template-columns: 1fr;
+    gap: 4px 0;
+  }
+  .equiv dt {
+    padding-top: 8px;
+  }
+  .equiv-list li {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+}
+
 /* ---- misc -------------------------------------------------------------- */
 
 .tag {

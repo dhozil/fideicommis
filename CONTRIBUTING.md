@@ -24,9 +24,10 @@ npm run typecheck --workspace frontend
 npm run build --workspace frontend
 python check_bundle_guard.py
 python check_layout.py
+npx tsx@4 tests/check_equivalence.ts
 ```
 
-CI runs all seven. The npm commands install and run from the repository root because
+CI runs all eight. The npm commands install and run from the repository root because
 it is an npm workspace: `npm ci` inside `frontend/` installs only that member and skips
 the hoisting that lets `next build` find react at all.
 
@@ -38,6 +39,13 @@ exists on Windows. It is the file to run when changing either check.
 `npm run build`. It exists because a layout can regress to cramped and still render
 perfectly: every page returns 200 and nothing looks broken, so nothing fails. It also
 compares against minified output, so it looks for `1440px` and not `--shell: 1440px`.
+
+`tests/check_equivalence.ts` checks that the write path can read the Equivalence
+Principle output out of every receipt shape that actually occurs, including a split
+committee and a null receipt. The reader shows the chain's own consensus output rather
+than a summary of it, so a receipt shape it cannot parse would show a settled
+transaction with no evidence beside it — which is the exact failure this project
+exists to avoid.
 
 ## If you touch the consensus suite
 
