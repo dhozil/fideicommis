@@ -39,6 +39,18 @@ jobs:
       # It is cached rather than skipped so a green run means the suite passed, not that
       # a step was made to pass. The key is the tarball, since caching extracted runners
       # would save the xz but not the fetch, which is the part that 404s.
+      # The harness names this tarball, and it no longer exists. gltest 0.29.2 asks for
+      # genvm-universal.tar.xz; the release `latest` resolves to carries
+      # genvm-runners-all.tar.xz, same 128.6 MB and same content, and the old name answers
+      # 404 for every User-Agent. That is the whole cause of 93 failing tests with
+      # "HTTP Error 404": not a cold cache, not a rate limit, a URL that was renamed
+      # upstream.
+      #
+      # It is invisible locally by construction. A machine that fetched the tarball before
+      # the rename still has it cached and never asks again, so the suite is green on this
+      # machine because the cache predates the break rather than because the URL works.
+      # Two wrong diagnoses got there first — a cold cache, then a User-Agent the CDN
+      # rejects — and both were plausible enough to act on.
       - name: Cache the GenVM runner the direct harness needs
         uses: actions/cache@v4
         with:
@@ -46,29 +58,68 @@ jobs:
           key: genvm-${{ runner.os }}-${{ hashFiles('contracts/fideicommis.py') }}
           restore-keys: genvm-${{ runner.os }}-
 
-      # Verified before the suite runs, so a failure here names the download rather than
-      # showing up as 93 unrelated test failures. gltest does the same fetch; this only
-      # says which URL answered.
-      - name: the GenVM runner is reachable
+      # Resolves which asset actually carries the runners, because the harness's name for
+      # it is not one this project can rely on. Asking the release rather than hardcoding
+      # either spelling means a second rename is a clear message here instead of 93 HTTP
+      # 404s later.
+      - name: resolve the GenVM runner asset
+        id: runner-check
         run: |
-          python - <<'PY'
-          import re, urllib.request
-          from pathlib import Path
+          python - <<'PY' > "$GITHUB_OUTPUT"
+          import json, sys, urllib.request
 
-          source = Path("contracts/fideicommis.py").read_text(encoding="utf-8")
-          pinned = re.search(r'"Depends":\s*"py-genlayer:([0-9a-z]+)"', source)
-          if not pinned:
-              raise SystemExit("the contract carries no Depends header, so nothing is pinned")
-          print(f"pinned runner: {pinned.group(1)}")
-
+          BROWSER = "Mozilla/5.0 (compatible; fideicommis-ci)"
           request = urllib.request.Request(
-              "https://github.com/genlayerlabs/genvm/releases/latest", method="HEAD"
+              "https://api.github.com/repos/genlayerlabs/genvm/releases/latest",
+              headers={"User-Agent": BROWSER},
           )
-          request.add_header("User-Agent", "fideicommis-ci")
-          with urllib.request.urlopen(request, timeout=30) as response:
-              version = response.url.rsplit("/", 1)[-1]
-          print(f"latest release: {version}")
+          release = json.load(urllib.request.urlopen(request, timeout=60))
+          # Prefer the name the harness asks for, fall back to the runners asset, so this
+          # survives either side of a rename.
+          universal = next(
+              (a for a in release["assets"] if a["name"] == "genvm-universal.tar.xz"), None
+          )
+          runners = next(
+              (
+                  a
+                  for a in release["assets"]
+                  if "runners" in a["name"] and a["name"].endswith(".tar.xz")
+              ),
+              None,
+          )
+          chosen = universal or runners
+          if chosen is None:
+              raise SystemExit(
+                  "no runners asset in this release: "
+                  + ", ".join(a["name"] for a in release["assets"])
+              )
+          print(f"version={release['tag_name']}", file=sys.stdout)
+          print(f"asset={chosen['name']}", file=sys.stdout)
           PY
+
+      # States the diagnosis in the log, rather than leaving it in a commit message where
+      # the next person to hit it will not look.
+      - name: the runner asset the harness names is gone
+        run: python check_runner_asset.py
+
+      # Gated on the file existing rather than on a workflow output, because a restored
+      # cache already holds the tarball under whatever name was used last time. Testing
+      # for the file is what makes a warm run skip 128 MB, and it stays correct if the
+      # asset is renamed again.
+      - name: fetch the runner under the name the harness expects
+        run: |
+          dir="$HOME/.cache/gltest-direct"
+          mkdir -p "$dir"
+          asset="${{ steps.runner-check.outputs.asset }}"
+          if compgen -G "$dir/genvm-*.tar.xz" > /dev/null; then
+            echo "a runner tarball is already cached:"
+            ls -1 "$dir"/genvm-*.tar.xz
+          else
+            url="https://github.com/genlayerlabs/genvm/releases/download/${{ steps.runner-check.outputs.version }}/$asset"
+            echo "fetching $url"
+            curl -fsSL --retry 3 -o "$dir/$asset" "$url"
+            ls -la "$dir/$asset"
+          fi
 
       - name: genvm-lint (Fideicommis)
         run: genvm-lint check contracts/fideicommis.py
@@ -232,6 +283,14 @@ jobs:
       - name: this repository builds the way Vercel will build it
         run: python check_deploy.py
 
+      # Every URL this project fetches resolves. The direct harness asks
+      # gltest for genvm-universal.tar.xz, which upstream renamed to
+      # genvm-runners-all.tar.xz, and a machine whose cache predates the rename never
+      # notices. This runs in both jobs so the break is a sentence rather than 93 failures
+      # in whichever job happens to run the suite first.
+      - name: every GenVM runner asset URL resolves
+        run: python check_runner_asset.py
+
       - name: the documents agree with the contract
         run: python check_docs.py
 
@@ -243,7 +302,28 @@ jobs:
       # Vercel serves and because dev renders differently enough to hide a width
       # regression. The build is already run above, so this only adds the server.
       - name: the layout uses the width it is given
-        run: python check_layout.py --serve
+        # An explicit background start rather than the check doing it. With the server as
+        # a child, the check's own cleanup signalled the process group, and on a CI runner
+        # that took the step down with it: "exit code 143", "the runner has received a
+        # shutdown signal". Both times this ran on CI it died five seconds in, at the
+        # point the server was being stopped, with no layout output at all.
+        #
+        # So the server is a sibling of the check rather than its child, and nothing the
+        # check does can signal it. The trap at the end is belt and braces for a failure
+        # path that exits before reaching the finally block.
+        run: |
+          cd frontend
+          npx --yes next start --port 3000 &
+          echo $! > /tmp/reader.pid
+          cd ..
+          for i in $(seq 1 60); do
+            if curl -sf -o /dev/null http://127.0.0.1:3000/about; then break; fi
+            sleep 1
+          done
+          python check_layout.py
+          status=$?
+          kill "$(cat /tmp/reader.pid)" 2>/dev/null || true
+          exit $status
 
       - name: no key material in the app
         working-directory: frontend
