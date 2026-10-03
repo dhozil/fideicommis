@@ -58,10 +58,10 @@ jobs:
           key: genvm-${{ runner.os }}-${{ hashFiles('contracts/fideicommis.py') }}
           restore-keys: genvm-${{ runner.os }}-
 
-      # Resolves which asset actually carries the runners, because the harness's name for
-      # it is not one this project can rely on. Asking the release rather than hardcoding
-      # either spelling means a second rename is a clear message here instead of 93 HTTP
-      # 404s later.
+      # Resolves the release version and the asset that carries the runners, because the
+      # harness's name for it is not one this project can rely on. Asking the release
+      # rather than hardcoding either spelling means a second rename is a clear message
+      # here instead of 93 HTTP 404s later.
       - name: resolve the GenVM runner asset
         id: runner-check
         run: |
@@ -102,24 +102,60 @@ jobs:
       - name: the runner asset the harness names is gone
         run: python check_runner_asset.py
 
-      # Gated on the file existing rather than on a workflow output, because a restored
-      # cache already holds the tarball under whatever name was used last time. Testing
-      # for the file is what makes a warm run skip 128 MB, and it stays correct if the
-      # asset is renamed again.
+      # Downloads it twice over: once under the release's own name, and once renamed to what
+      # the harness looks for. The second file is the one that matters and the first was
+      # not enough.
+      #
+      # The harness checks for `genvm-universal-{version}.tar.xz` and returns that path if
+      # it exists — gltest/direct/sdk_loader.py, list_cached_versions() globs
+      # `genvm-universal-*.tar.xz` and download_artifacts() returns early on a hit. So the
+      # file has to carry that exact name, not merely be in the directory. Fetching it as
+      # `genvm-runners-all.tar.xz` left the glob matching nothing, the harness fell through
+      # to its own download of the URL that 404s, and the suite failed exactly as before.
+      #
+      # That is what the previous revision of this step got wrong: it put the asset in the
+      # right directory under the wrong name, and read the step's success as the fetch
+      # having worked.
+      # Asserts the harness's own view. check_runner_cache.py reads gltest's source and calls
+      # list_cached_versions() against a scratch directory, so a change in how gltest finds
+      # a cached runner is caught here rather than 90 seconds later as 93 failures.
+      - name: the harness will find the runner this fetched
+        run: python check_runner_cache.py
+
       - name: fetch the runner under the name the harness expects
         run: |
           dir="$HOME/.cache/gltest-direct"
           mkdir -p "$dir"
           asset="${{ steps.runner-check.outputs.asset }}"
-          if compgen -G "$dir/genvm-*.tar.xz" > /dev/null; then
-            echo "a runner tarball is already cached:"
-            ls -1 "$dir"/genvm-*.tar.xz
+          version="${{ steps.runner-check.outputs.version }}"
+          expected="$dir/genvm-universal-$version.tar.xz"
+          if [ -f "$expected" ]; then
+            echo "already cached as $(basename "$expected")"
           else
-            url="https://github.com/genlayerlabs/genvm/releases/download/${{ steps.runner-check.outputs.version }}/$asset"
+            url="https://github.com/genlayerlabs/genvm/releases/download/$version/$asset"
             echo "fetching $url"
-            curl -fsSL --retry 3 -o "$dir/$asset" "$url"
-            ls -la "$dir/$asset"
+            curl -fsSL --retry 3 -o "$expected" "$url"
+            ls -la "$expected"
           fi
+          # The harness reads this path and nothing else, so assert it rather than
+          # trusting the download. A renamed file in the right directory is a pass that
+          # does not mean anything.
+          python - <<'PY'
+          from pathlib import Path
+
+          import gltest.direct.sdk_loader as sdk
+
+          cached = sdk.list_cached_versions()
+          if not cached:
+              raise SystemExit(
+                  f"the harness finds no cached runner: {sdk.list_cached_versions()=}, "
+                  f"and it will download a URL that 404s"
+              )
+          print(f"the harness will use: {cached[0]}")
+          for version in cached:
+              path = sdk.CACHE_DIR / f"genvm-universal-{version}.tar.xz"
+              print(f"  {path.name}  {path.stat().st_size / 1024 / 1024:.1f} MB")
+          PY
 
       - name: genvm-lint (Fideicommis)
         run: genvm-lint check contracts/fideicommis.py
