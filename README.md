@@ -291,7 +291,13 @@ Three behaviours worth naming, because they are the ones that make it worth read
 
 Reads are batched and cached with request coalescing, because the node allows thirty
 requests a minute per IP and a page that re-reads a trust to show the same figures is
-not reading, it is re-fetching.
+not reading, it is re-fetching. A transaction hash is cached too, and the page says when
+its answer was not read fresh — the node reports an unknown hash by throwing rather than
+returning null, so the commonest answer on a hash URL is an absence, and a cache that
+cannot hold an absence re-asks on every visit.
+
+To deploy it: [`VERCEL.md`](VERCEL.md). No environment variable is required and no key can
+be set, which `check_deploy.py` enforces rather than trusting.
 
 ---
 
