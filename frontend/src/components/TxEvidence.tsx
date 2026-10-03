@@ -22,10 +22,16 @@ import type { TransactionReport } from "@/lib/verify";
  * would be printing the one field known to disagree with what happened.
  */
 export function TxEvidence({ report, hash }: { report: TransactionReport; hash: string }) {
-  const { found, ran, settled, reason, status, evidence, error } = report;
+  const { found, ran, settled, reason, status, evidence, error, cached, ageMs } = report;
   const { leaderOutput, leaderError, agreed, validators, perValidator, leaderStatus } = evidence;
   const unanimous = validators > 0 && agreed === validators;
   const split = validators > 0 && agreed < validators;
+
+  // Shown only when it was served from the cache, and in plain numbers, because the
+  // alternative is a reader assuming a fresh read that did not happen. Under a second
+  // is not worth a second sentence.
+  const staleBy =
+    cached && ageMs !== null ? (ageMs < 1000 ? "under a second" : `${Math.round(ageMs / 1000)} seconds`) : null;
 
   return (
     <div className="equiv" style={{ marginTop: 20 }}>
@@ -34,6 +40,14 @@ export function TxEvidence({ report, hash }: { report: TransactionReport; hash: 
           {shortHash(hash)} on the explorer →
         </a>
       </h5>
+
+      {staleBy !== null ? (
+        <p className="faint" style={{ marginTop: 6, marginBottom: 0 }}>
+          served from cache, read {staleBy} ago
+          — a receipt does not change once decided, but this one may not have been
+          decided yet when it was read
+        </p>
+      ) : null}
 
       <dl>
         <dt>Verdict</dt>

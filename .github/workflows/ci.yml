@@ -147,19 +147,31 @@ jobs:
       - name: equivalence evidence survives every receipt shape
         run: npx --yes tsx@4 tests/check_equivalence.ts
 
-      # A test whose expectations are never compared passes whatever the code does.
-      # This one broke the parser four ways on purpose and required a failure each
-      # time, then restored the file byte-for-byte. It is slow, so it is not the
-      # check that gates the build, but without it "the expectations are asserted" is
-      # only an intention.
-      - name: the equivalence expectations can actually fail
-        run: python mutate_check.py
+      
 
       # A page that reports a rejection for a transaction the node has never heard of
       # is the failure mode this project exists to avoid, and it is a rendering bug
       # rather than a parser bug, so it is checked where the verdicts are decided.
       - name: the transaction panel keeps its four verdicts apart
         run: npx --yes tsx@4 tests/check_tx_verdict.mts
+
+      # Negative caching is the one change here that could make the reader lie: a
+      # remembered "this node has no record of it", replayed after the transaction
+      # settled, would report an absence for something real. Three ways that could go
+      # wrong are each broken on purpose, and each has to fail the check.
+      # A test whose expectations are never compared passes whatever the code does. The
+      # equivalence check used to carry an `expect` on every case and never look at it.
+      # These break the parser and the cache four and three ways respectively, and each
+      # one has to produce a different answer than the code would give unmutated.
+      - name: the equivalence expectations can actually fail
+        run: python mutate_check.py
+
+      - name: the cache cannot hide a real failure
+        run: python mutate_cache.py
+
+      # Waits out the 30s rejection TTL on purpose, so it is not on the fast path.
+      - name: the cache holds a value, an absence, and neither too long
+        run: npx --yes tsx@4 tests/check_cache.mts
 
       # Every working-directory in every workflow, resolved against the filesystem.
       # The reader was renamed from web/ to frontend/ and three steps still named the

@@ -3,6 +3,7 @@ import "server-only";
 import { chains, createClient } from "genlayer-js";
 import type { OrgSummary } from "./types";
 import { equivalenceOf, hasConsensus, leaderSays, type EquivalenceEvidence } from "./equivalence";
+import { getTransactionReceipt, receiptAge } from "./genlayer";
 
 /**
  * Check a claim, yourself.
@@ -189,12 +190,39 @@ export interface TransactionReport {
   status: string | null;
   evidence: EquivalenceEvidence;
   error: string | null;
+  /**
+   * Whether this came from the cache, and how old it is.
+   *
+   * Reported rather than hidden. A receipt served from cache is still the committee's
+   * decision, but a reader cannot tell it from a fresh read unless the page says which
+   * it is, and a verdict presented as live when it was not is the same class of
+   * overstatement this project refuses elsewhere.
+   */
+  cached: boolean;
+  ageMs: number | null;
 }
+
+/**
+ * What the node says when it does not have the hash, rather than when it is unwell.
+ *
+ * Measured, not guessed: the message from Studionet for an unknown hash is
+ * "Transaction receipt with hash "0x…" could not be found. The Transaction may not be
+ * processed on a block yet." The alternates are here because a node version that words
+ * it differently should still land on `no record` rather than on an error page, and an
+ * unmatched one falls through to the error branch, which is the safe direction.
+ */
+const NOT_A_TRANSACTION =
+  /could not be found|not be processed|no such transaction|unknown transaction|receipt not found/i;
 
 export async function verifyTransaction(hash: string): Promise<TransactionReport> {
   const digest = hash.trim();
 
-  const empty: TransactionReport = {
+  // `age` is null until the read has happened, so the age-carrying shape is built
+  // afterwards. Hardcoding `cached: false` on the no-receipt path is wrong: a hash the
+  // node has no record of is cached like any other answer, so a second visit *is* served
+  // from the cache and saying otherwise is the same overstatement this page is trying
+  // to avoid — just about freshness instead of about a committee.
+  const empty = (age: number | null): TransactionReport => ({
     found: false,
     ran: false,
     settled: false,
@@ -202,22 +230,40 @@ export async function verifyTransaction(hash: string): Promise<TransactionReport
     status: null,
     evidence: equivalenceOf(null),
     error: null,
-  };
+    cached: age !== null,
+    ageMs: age,
+  });
 
   let receipt: unknown;
   try {
-    receipt = await CLIENT.getTransactionReceipt({
-      hash: digest as `0x${string}`,
-    } as never);
+    receipt = await getTransactionReceipt(digest);
   } catch (err) {
-    return {
-      ...empty,
-      error: (err as Error).message.slice(0, 200),
-    };
+    const message = (err as Error).message ?? "";
+    // The node reports a hash it has never seen by throwing, not by returning null,
+    // and its own message says so: "Transaction receipt with hash ... could not be
+    // found. The Transaction may not be processed on a block yet."
+    //
+    // Treating that as a transport failure put "the node refused the read" in front of
+    // a hash the node simply does not have — a louder and more alarming thing to show
+    // than the truth, and it contradicted the four verdicts this page exists to keep
+    // apart. An absent hash is `no record`, which is what the null branch already said.
+    if (!NOT_A_TRANSACTION.test(message)) {
+      return {
+        // A read that failed for any other reason is not cached, so there is nothing
+        // held and no age to report.
+        ...empty(null),
+        error: message.slice(0, 200),
+      };
+    }
+    receipt = null;
   }
 
+  // Measured after the read, so it reflects the value being returned: either the one
+  // just fetched or the one that was already held.
+  const age = receiptAge(digest);
+
   if (receipt === null || receipt === undefined) {
-    return empty;
+    return empty(age);
   }
 
   const ran = hasConsensus(receipt);
@@ -237,6 +283,8 @@ export async function verifyTransaction(hash: string): Promise<TransactionReport
     status: status ? String(status) : null,
     evidence: equivalenceOf(receipt),
     error: null,
+    cached: age !== null,
+    ageMs: age,
   };
 }
 

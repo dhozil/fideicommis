@@ -16,7 +16,9 @@
     "glsim": "python tools/run_glsim_windows.py --port 4000 --validators 5 --no-browser",
     "check:docs": "python check_docs.py",
     "check:layout": "python check_layout.py",
-    "check": "python check_docs.py && python check_bundle_guard.py && python check_ci_paths.py && npx tsx@4 tests/check_explorer.mts && npx tsx@4 tests/check_equivalence.ts"
+    "check": "python check_docs.py && python check_bundle_guard.py && python check_ci_paths.py && npx tsx@4 tests/check_explorer.mts && npx tsx@4 tests/check_equivalence.ts && npx tsx@4 tests/check_tx_verdict.mts",
+    "check:cache": "npx tsx@4 tests/check_cache.mts",
+    "check:mutation": "python mutate_check.py && python mutate_cache.py"
   },
   "engines": {
     "node": ">=20"

@@ -1,40 +1,39 @@
 /**
- * Does the equivalence report say the truth about a receipt?
- *
- * This project shows the chain's own words rather than a summary of them, so the
- * extractor has to survive the shapes a receipt arrives in. This file pins that
- * behaviour, and it is worth being precise about what it does and does not establish,
- * because the previous version of this file overstated both.
- *
+ * Does the equivalence report say the truth on a receipt?
+ * 
+ * This project shows the chain's own words rather than a summary of them, so the extractor
+ * has to survive the shapes a receipt arrives in. This file pins that behaviour, and it is
+ * worth being precise about what it does and does not establish, because the previous
+ * version of this file overstated both.
+ * 
  * It used to open with "the receipts below are the ones that really happened on
  * Studionet during this project... Nothing here is invented." That was false, in two
  * ways that were both checkable:
- *
- *   - Four of the five fixtures are visibly hand-written. Their validator addresses
- *     are `0xAAA` and `0xBBB`, and their transaction hashes are `0x01` and `0x03` —
- *     a GenLayer hash is 0x followed by 64 hex characters, so those are placeholders,
- *     not recorded hashes. There is no 64-hex string anywhere in this repository.
- *   - The one fixture with real structure — the `@allow_storage` rollback — is
- *     documented in AGENTS.md and FINDINGS.md as a defect of the **local glsim** node.
- *     Nowhere is it recorded as having happened on Studionet. Calling it a Studionet
- *     receipt contradicted the project's own findings.
- *
- * So the honest description is this: the first fixture's *shape* came from a failure
- * that really happened, on a local node, with its identifiers redacted; the rest are
- * representatives of shapes a node can return. That is enough to pin a parser, and it
- * is not the same thing as verifying against the chain.
- *
- * What would close the gap: a captured receipt kept on disk, checked in, with its hash
- * in the fixture so anyone can fetch it and compare. No such fixture is retained yet,
- * which is why nothing here claims to be one.
- *
- * The second thing this file used to get wrong was quieter. Every case carried an
- * `expect` string, and the loop never compared against it — it called the extractor,
- * printed the result, and passed as long as nothing threw. A test that only proves
- * "does not crash" was named as though it proved the report was correct, which is the
- * same error this project exists to avoid, committed in the file whose job is
- * reporting the chain honestly. The expectations below are asserted, and each case
- * states the four figures that matter.
+ * 
+ *   - Four of the five fixtures are visibly hand-written. Their validator addresses are
+ *     `0xAAA` and `0xBBB`, and their transaction hashes are `0x01` and `0x03` — a GenLayer
+ *     hash is 0x followed by 64 hex characters, so those are placeholders, not recorded
+ *     hashes. There is no 64-hex string anywhere in this repository.
+ *   - The one fixture with real structure — the `@allow_storage` rollback — is documented in
+ *     AGENTS.md and FINDINGS.md as a defect of the **local glsim** node. Nowhere is it
+ *     recorded as having happened on Studionet. Calling it a Studionet receipt contradicted
+ *     the project's own findings.
+ * 
+ * So the honest description is this: the first fixture's *shape* came from a failure that
+ * really happened, on a local node, with its identifiers redacted; the rest are
+ * representatives of shapes a node can return. That is enough to pin a parser, and it is
+ * not the same thing as verifying against the chain.
+ * 
+ * What would close the gap: a captured receipt kept on disk, checked in, with its hash in
+ * the fixture so anyone can fetch it and compare. No such fixture is retained yet, which is
+ * why nothing here claims to be one.
+ * 
+ * The second thing this file used to get wrong was quieter. Every case carried an `expect`
+ * string, and the loop never compared against it — it called the extractor, printed the
+ * result, and passed as long as nothing threw. A test that only proves "does not crash" was
+ * named as though it proved the report was correct, which is the same error this project
+ * exists to avoid, committed in the file whose job is reporting the chain honestly. The
+ * expectations below are asserted, and each case states the four figures that matter.
  */
 
 import { equivalenceOf } from "../frontend/src/lib/equivalence";
@@ -208,8 +207,8 @@ for (const testCase of CASES) {
     problems.push(`error ${JSON.stringify(evidence.leaderError)}, wanted ${JSON.stringify(want.leaderError)}`);
   }
 
-  // An expectation is only worth writing if it can fail. Each case states a claim
-  // about the four figures, and the described line is what the panel would render.
+  // An expectation is only worth writing if it can fail. Each case states a claim about
+  // the four figures, and the described line is what the panel would render.
   if (problems.length) {
     failed += 1;
     console.log(`  FAIL ${testCase.name}`);

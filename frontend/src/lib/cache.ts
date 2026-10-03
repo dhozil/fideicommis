@@ -31,9 +31,25 @@ import "server-only";
 interface Entry {
   value: unknown;
   at: number;
+  /** Set when this entry is a remembered failure rather than a value. */
+  failure?: unknown;
+  /** A remembered failure expires sooner than a value does. */
+  ttlMs?: number;
 }
 
 const TTL_MS = 60_000;
+
+/**
+ * How long a *named* failure is remembered.
+ *
+ * Shorter than a value's, because a value on this reader is a chain state and a
+ * remembered failure is a guess about one: "the node had not seen this yet" is true for
+ * half a minute and then probably wrong, since the transaction is still settling. Thirty
+ * seconds is long enough to collapse a refresh and short enough that a fresh read wins
+ * soon after. It is the same reasoning as the receipt TTL, applied to absence.
+ */
+const REJECTION_TTL_MS = 30_000;
+
 const MAX_ENTRIES = 400;
 
 /** address:method:args -> the last good value. */
@@ -48,7 +64,7 @@ function keyOf(address: string, method: string, args: unknown[]): string {
 
 function prune(now: number) {
   for (const [key, entry] of cache) {
-    if (now - entry.at > TTL_MS) cache.delete(key);
+    if (now - entry.at > (entry.ttlMs ?? TTL_MS)) cache.delete(key);
   }
   // The map is bounded so a crawler walking thousands of addresses cannot grow it
   // without limit. Eviction is oldest-first, which is fine: the oldest entries are
@@ -71,13 +87,17 @@ export function cached<T>(
   method: string,
   args: unknown[],
   fetch: () => Promise<T>,
+  options: { cacheRejection?: (error: unknown) => boolean; rejectionTtlMs?: number } = {},
 ): Promise<T> {
   const key = keyOf(address, method, args);
   const now = Date.now();
   prune(now);
 
   const hit = cache.get(key);
-  if (hit && now - hit.at <= TTL_MS) {
+  if (hit && now - hit.at <= (hit.ttlMs ?? TTL_MS)) {
+    // A stored rejection is re-thrown rather than returned as a value, so the caller's
+    // error handling is unchanged and cannot tell a replayed failure from a fresh one.
+    if (hit.failure) return Promise.reject(hit.failure);
     return Promise.resolve(hit.value as T);
   }
 
@@ -88,6 +108,29 @@ export function cached<T>(
     .then((value) => {
       cache.set(key, { value, at: Date.now() });
       return value;
+    })
+    .catch((error) => {
+      // A failure is never cached by default: a throttled moment must not become a
+      // minute of a broken page.
+      //
+      // Some failures are not moments, though. The node answers a transaction hash it
+      // has never seen by *throwing* — "could not be found. The Transaction may not be
+      // processed on a block yet" — rather than returning null. That makes the commonest
+      // answer on a hash URL a rejection, and a cache that cannot hold it re-asks the
+      // node on every visit. So a caller may name the failures worth remembering, and
+      // only those, and they are remembered on a shorter TTL than a good value.
+      //
+      // The predicate is the caller's because "worth remembering" is a claim about
+      // meaning, not about transport: a rate limit is not the same as an absence.
+      if (options.cacheRejection?.(error)) {
+        cache.set(key, {
+          value: null,
+          failure: error,
+          at: Date.now(),
+          ttlMs: options.rejectionTtlMs ?? REJECTION_TTL_MS,
+        });
+      }
+      throw error;
     })
     .finally(() => {
       inflight.delete(key);
@@ -103,6 +146,30 @@ export function invalidate(address: string): void {
   for (const key of [...cache.keys()]) {
     if (key.startsWith(`${needle}:`)) cache.delete(key);
   }
+}
+
+/**
+ * When a cached value was stored, or null if it is not held.
+ *
+ * This exists because a page showing a cached receipt has to say how old it is, and a
+ * reader cannot otherwise tell "the committee decided this eleven seconds ago" from
+ * "this is what the committee decided, read once and now pinned". The distinction only
+ * exists if the age is reported, so it is reported rather than inferred.
+ */
+export function ageOf(address: string, method: string, args: unknown[]): number | null {
+  const hit = cache.get(keyOf(address, method, args));
+  return hit ? Date.now() - hit.at : null;
+}
+
+/** Whether a value is held but past its TTL, which is the case worth not serving. */
+export function isStale(address: string, method: string, args: unknown[]): boolean {
+  const hit = cache.get(keyOf(address, method, args));
+  return !hit || Date.now() - hit.at > (hit.ttlMs ?? TTL_MS);
+}
+
+/** Whether what is held for this key is a remembered failure rather than a value. */
+export function isRememberedFailure(address: string, method: string, args: unknown[]): boolean {
+  return cache.get(keyOf(address, method, args))?.failure !== undefined;
 }
 
 /**

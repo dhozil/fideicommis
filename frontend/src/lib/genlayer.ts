@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createClient, chains } from "genlayer-js";
-import { cached } from "./cache";
+import { cached, ageOf } from "./cache";
 
 /**
  * The GenLayer reader.
@@ -242,4 +242,77 @@ export async function readString(address: string, method: string, args: unknown[
   const raw = await readContract(address, method, args);
   if (typeof raw === "string") return raw;
   return String(raw ?? "");
+}
+
+/**
+ * One transaction receipt, read through the same queue and the same rate-limit retry
+ * as every other call, but cached by hash and not by address.
+ *
+ * The reasons the view path needs its own treatment:
+ *
+ *   - **A receipt is final.** A contract read answers "what is true now" and a receipt
+ *     answers "what the committee decided", which cannot change. So the same TTL that
+ *     would make a settled grant invisible on a trust page is harmless here, and the
+ *     argument for a short TTL does not transfer.
+ *   - **It is keyed by hash, and the key space is unbounded.** Anyone can put any hash
+ *     in the URL, so an un-cached read is a free request for anyone with a link to
+ *     share. That is the actual problem this addresses: not a slow page but a page that
+ *     spends the node's budget on the way in.
+ *   - **A receipt must never be served from a failed read.** `cached` already refuses
+ *     that, which matters more here than for a view: a missing receipt cached as an
+ *     empty one would report "no record" for a transaction that exists.
+ *
+ * A transaction that has not settled yet is the one case where a cached answer goes
+ * stale quickly, so `RECEIPT_TTL` is shorter than the view TTL and the caller is told
+ * how old the answer is.
+ */
+export async function getTransactionReceipt(hash: string): Promise<unknown> {
+  return cached(
+    receiptKey(hash),
+    "gen_getTransactionReceipt",
+    [],
+    async () =>
+      limited(() =>
+        withRateLimit(() => getClient().getTransactionReceipt({ hash: hash as `0x${string}` } as never)),
+      ),
+    // The node throws for a hash it has never seen rather than returning null, so
+    // without this the commonest answer on a hash URL is uncacheable and every refresh
+    // spends the node's budget asking the same question again. Only that absence is
+    // remembered; a rate limit or an unreachable node still fails loudly each time.
+    { cacheRejection: isUnknownTransaction },
+  );
+}
+
+/**
+ * Whether a failed receipt read means "this node has no such transaction" rather than
+ * "the read failed".
+ *
+ * Measured against Studionet, whose message is: `Transaction receipt with hash "0x…"
+ * could not be found. The Transaction may not be processed on a block yet.` The pattern
+ * is matched loosely so a node that words it differently still lands here, and anything
+ * unmatched falls through to being treated as a real failure, which is the direction to
+ * err: a transient problem shown as an error is recoverable, one shown as an absence is
+ * not.
+ */
+function isUnknownTransaction(error: unknown): boolean {
+  const message = (error as Error)?.message ?? "";
+  return /could not be found|not be processed|no such transaction|unknown transaction|receipt not found/i.test(
+    message,
+  );
+}
+
+/** The cache key a receipt is held under, so a caller can ask how old it is. */
+export function receiptKey(hash: string): string {
+  return `tx:${hash.toLowerCase()}`;
+}
+
+/**
+ * How old the held receipt is, or null when nothing is held for this hash.
+ *
+ * The page needs this so it can say whether the answer was read fresh or served from
+ * the cache. Without it a reader cannot tell the two apart, and a cached verdict
+ * presented as a live one is the thing this project keeps refusing to do elsewhere.
+ */
+export function receiptAge(hash: string): number | null {
+  return ageOf(receiptKey(hash), "gen_getTransactionReceipt", []);
 }
