@@ -28,6 +28,48 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
+      # The direct-mode harness downloads the GenVM runner before its first test:
+      # gltest/direct/sdk_loader.py resolves the latest release with a HEAD request and
+      # then fetches genvm-universal.tar.xz, 128.6 MB, from which it extracts the one
+      # runner this contract pins. That is a cold-start cost with no bearing on the code,
+      # and the first push to this repository failed 93 tests with HTTP 404 — every
+      # failure that download, not the contract. The suite mocks every model call, so
+      # this is the only network read it makes.
+      #
+      # It is cached rather than skipped so a green run means the suite passed, not that
+      # a step was made to pass. The key is the tarball, since caching extracted runners
+      # would save the xz but not the fetch, which is the part that 404s.
+      - name: Cache the GenVM runner the direct harness needs
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/gltest-direct
+          key: genvm-${{ runner.os }}-${{ hashFiles('contracts/fideicommis.py') }}
+          restore-keys: genvm-${{ runner.os }}-
+
+      # Verified before the suite runs, so a failure here names the download rather than
+      # showing up as 93 unrelated test failures. gltest does the same fetch; this only
+      # says which URL answered.
+      - name: the GenVM runner is reachable
+        run: |
+          python - <<'PY'
+          import re, urllib.request
+          from pathlib import Path
+
+          source = Path("contracts/fideicommis.py").read_text(encoding="utf-8")
+          pinned = re.search(r'"Depends":\s*"py-genlayer:([0-9a-z]+)"', source)
+          if not pinned:
+              raise SystemExit("the contract carries no Depends header, so nothing is pinned")
+          print(f"pinned runner: {pinned.group(1)}")
+
+          request = urllib.request.Request(
+              "https://github.com/genlayerlabs/genvm/releases/latest", method="HEAD"
+          )
+          request.add_header("User-Agent", "fideicommis-ci")
+          with urllib.request.urlopen(request, timeout=30) as response:
+              version = response.url.rsplit("/", 1)[-1]
+          print(f"latest release: {version}")
+          PY
+
       - name: genvm-lint (Fideicommis)
         run: genvm-lint check contracts/fideicommis.py
 
@@ -193,8 +235,15 @@ jobs:
       - name: the documents agree with the contract
         run: python check_docs.py
 
+      # This needs something to measure. check_layout.py fetches the rendered pages over
+      # HTTP, so a runner with no server answered "connection refused" and the step
+      # failed — on a layout that is fine, and had never been checked on CI at all.
+      #
+      # It measures a production build rather than `next dev`, because that is what
+      # Vercel serves and because dev renders differently enough to hide a width
+      # regression. The build is already run above, so this only adds the server.
       - name: the layout uses the width it is given
-        run: python check_layout.py
+        run: python check_layout.py --serve
 
       - name: no key material in the app
         working-directory: frontend
