@@ -27,6 +27,11 @@ fee-profile.json
 contracts/.integration/
 contracts/fideicommis_*.py
 
+# A day-old snapshot of the GenVM release, written by check_runner_asset.py so the GitHub
+# API's 60-requests-an-hour-per-IP quota is not spent twice in one push. GitHub ignores
+# everything not .gitignore'd, and this is machine state like the caches above.
+.gltest-release-cache.json
+
 # Node, hoisted to the workspace root by npm.
 node_modules/
 .next/
