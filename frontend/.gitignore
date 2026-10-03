@@ -4,5 +4,11 @@ out/
 next-env.d.ts
 *.tsbuildinfo
 .env
+# `.env.production` is the one that matters: the reader reads NEXT_PUBLIC_ values, and a
+# committed one would ship someone else's RPC endpoint to every visitor.
 .env.local
+.env.*.local
+.env.production
+.env.production.local
+!.env.example
 .DS_Store

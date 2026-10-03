@@ -6,6 +6,16 @@ artifacts/
 .gltest_cache/
 fee-profile.json
 
+# Next.js writes these, and `.env` alone did not cover them: a build on a developer
+# machine creates .env.local, and a deployment platform writes .env.production.
+# `.env.production` is the one that matters most here, because the reader reads NEXT_PUBLIC_
+# values and a committed one would ship someone else's RPC endpoint to every visitor.
+.env.local
+.env.*.local
+.env.production
+.env.production.local
+!.env.example
+
 # Metadata pip writes when the project is installed editable. It describes the
 # packaging, not the contract, and it names no package because pyproject
 # declares packages = [].
@@ -23,6 +33,19 @@ node_modules/
 *.tsbuildinfo
 next-env.d.ts
 .DS_Store
+
+# Every Next.js build directory, not just `.next`. The pattern is anchored to the
+# segment because `frontend/` carries its own .gitignore, and a rule in the parent
+# directory does not apply to a nested repository-local file — so a rule here covering
+# only `.next/` leaves the workspace's own build directory unignored. That is where this
+# went wrong: check_deploy.py moved the build aside to prove it was not reading a stale
+# artifact, crashed on Windows mid-move, and left 127 MB in `frontend/.next.stashed`,
+# which neither `.next/` rule matched. `git add -A` staged all of it.
+#
+# An exit code proves the same thing without moving anything, and that is what the check
+# does now. This pattern is here so a future build directory is covered by one rule
+# rather than discovered the same way.
+**/.next*/
 
 # Live-network driver state and secrets. The keeper key is a real account key on
 # a public testnet, so it must never be committed.

@@ -181,6 +181,15 @@ jobs:
       - name: every path CI depends on exists
         run: python check_ci_paths.py
 
+      # Vercel reads vercel.json, not this project's docs, so the things that decide a
+      # deployment are checked against that file: the build command names a script that
+      # exists, the output directory is where the build writes, and the build succeeds
+      # with no environment variables set at all — which is what a fresh Vercel project
+      # looks like. It also asserts the reader reads no key material, since a deploy
+      # target is the one place a key could plausibly get wired in by accident.
+      - name: this repository builds the way Vercel will build it
+        run: python check_deploy.py
+
       - name: the documents agree with the contract
         run: python check_docs.py
 

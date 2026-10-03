@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { FEATURED_TRUST } from "@/lib/registry";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,7 +30,12 @@ export async function GET() {
     readOnly: true,
     signs: false,
     holdsKeys: false,
-    example: process.env.NEXT_PUBLIC_EXAMPLE_TRUST ?? "0x89D3E2F937a265583BF308F2d5250445e1f7113F",
+    // The same variable the reader itself features, read through the registry rather
+    // than a second literal. It used to be named NEXT_PUBLIC_EXAMPLE_TRUST with its own
+    // fallback to a different address than the one the site features, so a health check
+    // could report a trust the landing page was not showing. Two variables for one
+    // meaning is how those drift apart.
+    example: FEATURED_TRUST,
     checks,
   });
 }
