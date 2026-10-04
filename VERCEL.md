@@ -7,9 +7,8 @@ itself.
 ## In the Vercel UI
 
 1. **Add New → Project**, and import `dhozil/fideicommis`.
-2. **Root Directory**: leave it at the repository root. The reader is a workspace, and
-   setting this to `frontend/` breaks the build, because the lockfile and the root
-   scripts are one level up.
+2. **Root Directory: leave it EMPTY.** Not `frontend/`. This is the only setting that
+   breaks the build, and it breaks it in a way that looks like a missing build.
 3. **Framework Preset**: Next.js. It will be detected; `vercel.json` states it too.
 4. **Build Command**: `npm run build`. **Output Directory**: `frontend/.next`. Both are in
    `vercel.json`, so the fields should fill themselves — check that they did.
@@ -20,6 +19,21 @@ itself.
 Then **Deploy**. No key goes in there, and none is possible: the reader holds no key and
 signs nothing, and `check_deploy.py` fails the build if any file under `frontend/src`
 reads a variable whose name contains `PRIVATE`, `KEY`, `SECRET` or `MNEMONIC`.
+
+## If the build fails with a doubled path
+
+    Error: The Next.js output directory "frontend/.next" was not found at
+    "/vercel/path0/frontend/frontend/.next"
+
+That is the Root Directory set to `frontend/`. Vercel resolves `outputDirectory` relative
+to the Root Directory rather than to the repository root, so the two settings compound:
+
+    Root Directory = (empty)     ->  frontend/.next             correct
+    Root Directory = frontend/   ->  frontend/frontend/.next   cannot exist
+
+Clear the field and redeploy. Nothing in the repository needs changing — `vercel.json`
+is already written for an empty Root Directory, and this file is not read by Vercel,
+which is why it is stated here rather than only there.
 
 ## What is worth checking afterwards
 

@@ -102,6 +102,37 @@ check(
     "BUILD_ID present" if pathlib.Path(out, "BUILD_ID").exists() else "no BUILD_ID — run the build first",
 )
 
+# The one thing this file cannot check, because it lives in the Vercel UI rather than in
+# the repository: the project's Root Directory setting.
+#
+# `outputDirectory` is resolved *relative to* the Root Directory, not to the repository
+# root. So the two settings have to agree, and the failure when they do not is a doubled
+# path rather than a missing one:
+#
+#     Root Directory = frontend/   +   outputDirectory = frontend/.next
+#     resolves to    frontend/frontend/.next      ← does not exist, and cannot
+#
+# This repository's vercel.json is written for Root Directory = the repository root, which
+# is also what VERCEL.md instructs and what CI can verify. A deployment that sets the Root
+# Directory to `frontend/` gets this exact error, and nothing in the repository can prevent
+# it — Vercel does not read VERCEL.md.
+#
+# So it is stated as loudly as this file can state it, and the two shapes are printed so a
+# reader who has this error can match it against what they set.
+root = pathlib.Path(out)
+doubled = root.parent / out
+check(
+    "the path is not doubled",
+    not doubled.exists(),
+    f"{out} — setting Root Directory to frontend/ makes this resolve to frontend/{out}",
+)
+print()
+print("  Vercel resolves outputDirectory relative to the Root Directory, not the repo root:")
+print("    Root Directory = (empty)    ->  " + out + "            correct")
+print("    Root Directory = frontend/  ->  frontend/" + out + "  does not exist")
+print("  If the build fails with a path ending in frontend/frontend/.next, the Root")
+print("  Directory is set to frontend/ in the Vercel UI and has to be cleared.")
+
 print()
 print("=== framework matches the dependency ===")
 check(

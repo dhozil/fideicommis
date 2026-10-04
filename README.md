@@ -296,7 +296,9 @@ its answer was not read fresh — the node reports an unknown hash by throwing r
 returning null, so the commonest answer on a hash URL is an absence, and a cache that
 cannot hold an absence re-asks on every visit.
 
-To deploy it: [`VERCEL.md`](VERCEL.md). No environment variable is required and no key can
+To deploy it: [`VERCEL.md`](VERCEL.md) — and leave Vercel's Root Directory empty, because
+`outputDirectory` is resolved relative to it and `frontend/` makes the path
+`frontend/frontend/.next`. No environment variable is required and no key can
 be set, which `check_deploy.py` enforces rather than trusting.
 
 ---
