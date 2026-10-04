@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AddressForm } from "@/components/AddressForm";
-import { KeeperActions } from "@/components/KeeperActions";
+import { TrustWrites } from "@/components/TrustWrites";
+import { ProposalComposer } from "@/components/ProposalActions";
 import { Conservation } from "@/components/Conservation";
 import { ConstitutionGauges } from "@/components/ConstitutionGauges";
 import { DecisionList } from "@/components/Decision";
@@ -124,7 +125,19 @@ export default async function TrustPage({ params }: Params) {
           </div>
           <div className="panel">
             <h3>Keeper</h3>
-            <KeeperActions trust={record.address} treasury={gen(record.treasury)} />
+            <TrustWrites
+              trust={record.address}
+              treasury={record.treasury}
+              ceilingBps={record.policy.spend_ceiling_bps}
+              maxCeilingBps={record.constitution.max_spend_ceiling_bps}
+            />
+          </div>
+          <div className="panel">
+            <h3>Propose</h3>
+            <ProposalComposer
+              trust={record.address}
+              governanceFields={record.constitution.governance_fields}
+            />
           </div>
           <div className="panel">
             <h3>Membership</h3>
@@ -167,6 +180,7 @@ export default async function TrustPage({ params }: Params) {
             audits={record.audits}
             state={record.state}
             members={record.members}
+            trust={record.address}
           />
         </section>
       </div>

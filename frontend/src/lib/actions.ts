@@ -184,9 +184,22 @@ export const advanceCycle = (trust: string, from?: string, onStage?: (stage: Wri
 export const fund = (trust: string, amount: bigint, from?: string, onStage?: (stage: WriteStage) => void) =>
   submit(trust, "fund", [], { value: amount, from, onStage });
 
-/** Operational policy: what burns, what a keeper is paid, how often. */
-export const setPolicy = (trust: string, burn: bigint, keeper: bigint, tick: number, from?: string) =>
-  submit(trust, "set_policy", [burn, keeper, tick], { from });
+/**
+ * Operational policy: what burns, what a keeper is paid, how often.
+ *
+ * Every helper takes `onStage` because every write has the same two waits, and a
+ * button that cannot say which one it is in is a button that looks stuck. Four of
+ * these six were written without it, so a proposal sent from the UI would have gone
+ * silent for two minutes and then appeared to have failed.
+ */
+export const setPolicy = (
+  trust: string,
+  burn: bigint,
+  keeper: bigint,
+  tick: number,
+  from?: string,
+  onStage?: (stage: WriteStage) => void,
+) => submit(trust, "set_policy", [burn, keeper, tick], { from, onStage });
 
 /** A member proposes. Anyone may propose; only a member may vote. */
 export const submitProposal = (
@@ -197,16 +210,31 @@ export const submitProposal = (
   amount: bigint,
   recipient: string,
   from?: string,
-) => submit(trust, "submit_proposal", [title, body, kind, amount, recipient], { from });
+  onStage?: (stage: WriteStage) => void,
+) => submit(trust, "submit_proposal", [title, body, kind, amount, recipient], { from, onStage });
 
-export const castVote = (trust: string, proposalId: string, approve: boolean, from?: string) =>
-  submit(trust, "cast_vote", [proposalId, approve], { from });
+export const castVote = (
+  trust: string,
+  proposalId: string,
+  approve: boolean,
+  from?: string,
+  onStage?: (stage: WriteStage) => void,
+) => submit(trust, "cast_vote", [proposalId, approve], { from, onStage });
 
-export const executeProposal = (trust: string, proposalId: string, from?: string) =>
-  submit(trust, "execute_proposal", [proposalId], { from });
+export const executeProposal = (
+  trust: string,
+  proposalId: string,
+  from?: string,
+  onStage?: (stage: WriteStage) => void,
+) => submit(trust, "execute_proposal", [proposalId], { from, onStage });
 
-export const reviewDelivery = (trust: string, proposalId: string, evidenceUrl: string, from?: string) =>
-  submit(trust, "review_delivery", [proposalId, evidenceUrl], { from });
+export const reviewDelivery = (
+  trust: string,
+  proposalId: string,
+  evidenceUrl: string,
+  from?: string,
+  onStage?: (stage: WriteStage) => void,
+) => submit(trust, "review_delivery", [proposalId, evidenceUrl], { from, onStage });
 
 /**
  * Refuses a write the contract would certainly reject, before it costs gas.

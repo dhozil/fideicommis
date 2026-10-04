@@ -1365,6 +1365,130 @@ th.num {
   top: 12px;
 }
 
+/* The write panel: every control that can change a trust.
+ *
+ * Three states have to be distinguishable at a glance, because the difference between
+ * them is whether a transaction is in flight: ready, working, and reported. A disabled
+ * button alone does not say which of those it is, so the working state carries a spinner
+ * and a sentence, and the reported state is a separate block below rather than a
+ * tooltip that disappears.
+ */
+.write-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.write-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.write-buttons button.quiet {
+  background: transparent;
+}
+
+.write-buttons button.danger {
+  border-color: var(--breach-dim);
+  color: var(--breach);
+}
+
+/* The reason a control is unavailable, as a list under the row rather than a title
+   attribute: a disabled button raises no hover event, so a tooltip would be unreachable. */
+.write-reasons {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  font-size: 0.78rem;
+  color: var(--ink-dim);
+}
+
+.write-reasons li + li {
+  margin-top: 3px;
+}
+
+.write-reason {
+  margin: 10px 0 0;
+  font-size: 0.82rem;
+  color: var(--ink-dim);
+}
+
+.write-stage {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 12px 0 0;
+  font-size: 0.84rem;
+  color: var(--ink-dim);
+}
+
+/* A small ring rather than a bar: the wait can be a minute and a half, and a bar that
+   fills for that long looks like it is stuck at the end. */
+.spinner {
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+  border: 2px solid var(--rule-strong);
+  border-top-color: var(--brass);
+  border-radius: 50%;
+  animation: write-spin 900ms linear infinite;
+}
+
+@keyframes write-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+    border-top-color: var(--brass);
+  }
+}
+
+.write-outcome {
+  margin-top: 12px;
+  padding: 11px 13px;
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  border: 1px solid var(--rule-strong);
+  background: var(--ground);
+}
+
+.write-outcome.is-good {
+  border-color: var(--verified);
+}
+
+.write-outcome.is-bad {
+  border-color: var(--breach-dim);
+}
+
+.write-outcome .equiv {
+  margin-top: 0;
+}
+
+/* The kind picker for a proposal. Radio semantics, so it is one choice from three rather
+   than three buttons, and the picked state is visible without relying on the border. */
+.write-kinds {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.write-kinds button {
+  padding: 6px 11px;
+  font-size: 0.74rem;
+  background: transparent;
+}
+
+.write-kinds button.is-picked {
+  border-color: var(--brass);
+  color: var(--brass);
+  background: color-mix(in srgb, var(--brass) 10%, transparent);
+}
+
 /* The wallet chooser.
  *
  * A modal over a page whose subject is a trust that holds money has one job above

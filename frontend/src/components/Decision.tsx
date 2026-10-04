@@ -1,6 +1,13 @@
 import { gen, isConstitutional, quorumHeldByOne, shortAddress } from "@/lib/format";
 import { addressOnExplorer } from "@/lib/explorer";
 import type { ConstitutionalState, Member, Proposal, ProposalAudit } from "@/lib/types";
+import { ProposalActions } from "@/components/ProposalActions";
+import { useWallet } from "@/lib/wallet";
+
+/** Shares are held as a decimal string by the contract, so a string compare is wrong. */
+function holdsShares(member: Member | undefined): boolean {
+  return member !== undefined && BigInt(member.shares || "0") > 0n;
+}
 
 type Step = {
   name: string;
@@ -80,13 +87,17 @@ export function Decision({
   state,
   members,
   quorum,
+  trust,
 }: {
   proposal: Proposal;
   audit?: ProposalAudit;
   state: ConstitutionalState;
   members: Member[];
   quorum: boolean | null;
+  /** The trust's own address, needed by every write. */
+  trust: string;
 }) {
+  const { address } = useWallet();
   const steps = chain(proposal, quorum, state.amendment_delay);
   const constitutional = isConstitutional(proposal.kind);
   const violations = proposal.violations ?? [];
@@ -226,6 +237,17 @@ export function Decision({
         </div>
       ) : null}
 
+      <ProposalActions
+        trust={trust}
+        proposal={proposal}
+        audit={audit}
+        account={address ?? undefined}
+        isMember={holdsShares(
+          address ? members.find((m) => m.address.toLowerCase() === address.toLowerCase()) : undefined,
+        )}
+        quorumMet={quorum === true}
+      />
+
       {audit?.rationale ? (
         <div className="record-block">
           <h5>Why the committee reached that verdict</h5>
@@ -255,11 +277,13 @@ export function DecisionList({
   audits,
   state,
   members,
+  trust,
 }: {
   proposals: Proposal[];
   audits: Record<string, ProposalAudit>;
   state: ConstitutionalState;
   members: Member[];
+  trust: string;
 }) {
   if (!proposals.length) {
     return (
@@ -286,6 +310,7 @@ export function DecisionList({
           state={state}
           members={members}
           quorum={quorum}
+          trust={trust}
         />
       ))}
     </div>

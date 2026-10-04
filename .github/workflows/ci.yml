@@ -291,6 +291,13 @@ jobs:
       - name: every wallet is offered by name, and nothing is guessed
         run: npx --yes tsx@4 tests/check_wallet_discovery.mts
 
+      # A write control that appears when the contract would refuse costs two minutes of
+      # consensus to discover. The gating is a pure function beside the other pure
+      # readers, so it is reachable without copying it out of the component, which is the
+      # failure this project keeps closing.
+      - name: no write is offered before the contract would accept it
+        run: npx --yes tsx@4 tests/check_write_gating.mts
+
       # Negative caching is the one change here that could make the reader lie: a
       # remembered "this node has no record of it", replayed after the transaction
       # settled, would report an absence for something real. Three ways that could go
