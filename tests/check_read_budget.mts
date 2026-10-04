@@ -95,6 +95,57 @@ console.log("=== the proposal cap fits inside the node's per-minute budget ===")
 }
 
 console.log();
+console.log("=== a page fits in one wave, so concurrency is not a second budget ===");
+{
+  // The record page splits into waves when the reads it issues exceed CONCURRENCY, and
+  // nothing fails when that happens — the page just gets slower. It happened twice: the
+  // ceiling was 6 for a ten-read page, then 12 for a sixteen-read page, and the trust page
+  // measured 7.0 s where one wave of the same reads takes 1.7 s.
+  //
+  // So the ceiling is asserted against the worst case rather than left as a tuning knob.
+  const genlayer = readFileSync(join(here, "..", "frontend", "src", "lib", "genlayer.ts"), "utf-8");
+  const match = genlayer.match(/const CONCURRENCY = (\d+);/);
+  if (!match?.[1]) throw new Error("CONCURRENCY was not found in genlayer.ts");
+  const concurrency = Number(match[1]);
+
+  const limit = constant("NODE_CALLS_PER_MINUTE");
+  const slack = constant("SLACK_CALLS");
+  const fixed = constant("FIXED_READS");
+  const perProposal = constant("CALLS_PER_PROPOSAL");
+  const maxProposals = Math.floor((limit - slack - fixed) / perProposal);
+  const worstCase = fixed + maxProposals * perProposal;
+
+  check(
+    `the worst-case page issues ${worstCase} reads and the ceiling is ${concurrency}`,
+    worstCase <= concurrency,
+    `${worstCase} <= ${concurrency}`,
+  );
+  // Just enough headroom to be true, not merely not-false: a ceiling of 200 would satisfy
+  // the line above and would fire thirty requests at a node that allows thirty a minute,
+  // which is the throttling the whole budget arithmetic exists to avoid.
+  check(
+    "and the ceiling is not so loose that it abandons the budget",
+    concurrency <= limit,
+    `${concurrency} <= ${limit}`,
+  );
+}
+
+console.log();
+console.log("=== nothing is read that another answer already carries ===");
+{
+  // get_org_summary carries seventeen fields including `mission`, so calling get_mission
+  // separately was a request spent re-reading data already in hand. Asserted against the
+  // source rather than left to memory, because the reader's own comment complains about
+  // exactly this and then did it.
+  check("get_mission is not requested", !/method: "get_mission"/.test(source));
+  check("the mission comes from the summary", /summary\.mission/.test(source));
+  // The two that stay are the cross-check the Provenance panel exists to show, so their
+  // absence would quietly delete the only comparison of two views of the same fact.
+  check("get_status is still requested, for the cross-check", /method: "get_status"/.test(source));
+  check("get_treasury is still requested, for the cross-check", /method: "get_treasury"/.test(source));
+}
+
+console.log();
 console.log("=== every view the reader sends takes the arguments it requires ===");
 {
   // get_mission_log(offset, limit) is the only one of these that takes arguments, and

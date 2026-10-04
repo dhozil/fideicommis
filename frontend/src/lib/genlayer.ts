@@ -72,8 +72,20 @@ const READ_BACKOFF_MS = 1800;
  * IP, and this reader's own probe work got throttled while measuring the numbers
  * above. Concurrency is what makes a page fast; the budget is what keeps the next
  * reader served.
+ *
+ * This number has to carry a whole page in one wave, and it has been wrong twice for the
+ * same reason. It was 6, then 12 for ten fixed reads, and both times the record page grew
+ * past it without it being noticed — because nothing fails when a page splits into two
+ * waves, it just gets slower. The trust page measured 7.0 s with sixteen fixed reads and a
+ * ceiling of twelve, against 1.7 s for one wave of the same reads.
+ *
+ * So the ceiling is not a tuning knob here, it is `worst-case reads in one page`, and
+ * `tests/check_read_budget.mts` asserts that the two agree. Sixteen fixed views plus two
+ * per proposal at a six-proposal cap is 28, which is also the largest number of reads a
+ * render may issue against the node's 30-a-minute budget, so one wave and one page fit
+ * together exactly once and the arithmetic is visible in both places.
  */
-const CONCURRENCY = 12;
+const CONCURRENCY = 28;
 
 export class RateLimitedError extends Error {
   constructor() {

@@ -42,13 +42,13 @@ import type {
  * The count is derived from the node's limit rather than guessed, so the two cannot
  * drift apart:
  *
- *     fixed reads            16
+ *     fixed reads            15
  *     per proposal            2   (the record, and the audit that explains it)
  *     node limit per minute  30
  *     slack                   2   so a second reader in the same minute still fits
- *     => (30 - 2 - 16) / 2 = 6
+ *     => (30 - 2 - 15) / 2 = 6
  *
- * Six proposals is 28 reads, which leaves the node answerable for the rest of the
+ * Six proposals is 27 reads, which leaves the node answerable for the rest of the
  * minute. Seven would be exactly 30 and would consume all of it, so opening the same
  * trust in two tabs would be enough to throttle the second one: the ordinary case, not
  * an edge one. Reads are batched, so 28 reads is about two requests rather than 28.
@@ -61,7 +61,7 @@ import type {
  */
 const NODE_CALLS_PER_MINUTE = 30;
 const SLACK_CALLS = 2;
-const FIXED_READS = 16;
+const FIXED_READS = 15;
 const CALLS_PER_PROPOSAL = 2;
 const MAX_PROPOSALS = Math.floor((NODE_CALLS_PER_MINUTE - SLACK_CALLS - FIXED_READS) / CALLS_PER_PROPOSAL);
 
@@ -126,7 +126,16 @@ export async function readTrust(address: string): Promise<TrustRecord> {
     { method: "get_proposal_ids" },
     { method: "get_status" },
     { method: "get_treasury" },
-    { method: "get_mission" },
+    // `get_mission` is deliberately absent: `get_org_summary` carries `mission`, and
+    // reading it twice was a request spent re-reading data already in hand — the exact
+    // thing the comment above this list complains about. `scripts/measure_reads.cjs`
+    // printed the summary's seventeen fields, and `mission` is one of them.
+    //
+    // `get_status` and `get_treasury` stay even though the summary carries `status` and
+    // `treasury_atto`, because those two are the cross-check: the Provenance panel shows
+    // the direct view beside the aggregated one so a reader can see when they disagree.
+    // Dropping them would save two requests and remove the only place in the reader that
+    // compares two views of the same fact against each other.
     { method: "get_charter_history" },
     { method: "get_evidence_urls" },
     // `get_mission_log` is the one view here that takes arguments: `get_mission_log(
@@ -182,8 +191,8 @@ export async function readTrust(address: string): Promise<TrustRecord> {
   const status = statusRaw === null || statusRaw === undefined ? "" : String(statusRaw);
   const treasuryRaw = answers[11];
   const treasury = treasuryRaw === null || treasuryRaw === undefined ? "" : String(treasuryRaw);
-  const missionRaw = answers[12];
-  const mission = missionRaw === null || missionRaw === undefined ? "" : String(missionRaw);
+  // The mission comes from the summary, which carries it, rather than from `get_mission`.
+  const mission = String(summary.mission ?? "");
 
   const decodeList = (index: number, method: string): string[] => {
     const raw = answers[index];
@@ -199,9 +208,9 @@ export async function readTrust(address: string): Promise<TrustRecord> {
     }
   };
 
-  const charterHistory = decodeList(13, "get_charter_history");
-  const evidenceUrls = decodeList(14, "get_evidence_urls");
-  const missionLog = decodeList(15, "get_mission_log");
+  const charterHistory = decodeList(12, "get_charter_history");
+  const evidenceUrls = decodeList(13, "get_evidence_urls");
+  const missionLog = decodeList(14, "get_mission_log");
 
   // Newest first: an auditor opening a trust is asking what it did lately, and the
   // cap then falls on the oldest records rather than the recent ones.
