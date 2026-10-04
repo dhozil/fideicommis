@@ -11,8 +11,9 @@
  * out instead. It is twelve lines of conditions over five booleans and no React, which
  * is exactly what belongs beside the other pure readers.
  *
- * The two rules most likely to regress are the negative ones: offering Execute before
- * the constitutional delay has elapsed, and offering a vote to a non-member. Both are
+ * The rules most likely to regress are the negative ones: offering Execute before the
+ * constitutional delay has elapsed, offering a vote to a non-member, and offering
+ * `assess_proposal` after the committee has ruled or before the rulebook exists. All are
  * asserted by `tests/check_write_gating.mts`.
  */
 
@@ -22,6 +23,10 @@ export interface GatingInput {
   rejections: number;
   executed: boolean;
   settled: boolean;
+  /** Whether the committee has already ruled. `assess_proposal` refuses unless PENDING. */
+  verdict: string;
+  /** Whether the rulebook has been derived. `assess_proposal` refuses without it. */
+  hasRules: boolean;
   /** Whether the connected address holds shares. Voting is a member act. */
   isMember: boolean;
   /** Whether quorum is met and the constitutional delay has elapsed. */
@@ -29,6 +34,7 @@ export interface GatingInput {
 }
 
 export interface Gating {
+  canAssess: boolean;
   canVote: boolean;
   canExecute: boolean;
   canReview: boolean;
@@ -39,6 +45,12 @@ export interface Gating {
 export function gatingFor(proposal: GatingInput): Gating {
   const votes = proposal.approvals + proposal.rejections;
   const isGrant = proposal.kind === "GRANT";
+
+  // `assess_proposal` guards on exactly two things: the verdict is still PENDING, and
+  // the rulebook exists. It is permissionless — no member check, no vote-count check —
+  // because asking the committee to judge is not a decision, it is a request. An earlier
+  // version of the panel also required zero votes, which the contract never asked for.
+  const canAssess = proposal.verdict === "PENDING" && proposal.hasRules;
 
   const canVote = !proposal.executed && votes > 0 && proposal.isMember;
   const canExecute = !proposal.executed && votes > 0 && proposal.canExecute;
@@ -51,15 +63,20 @@ export function gatingFor(proposal: GatingInput): Gating {
   // branch has to consider that a member may have both voted and still be waiting — the
   // common case, and the one the previous version answered with the wrong sentence.
   let idleReason: string | null = null;
-  if (!canVote && !canExecute && !canReview) {
+  if (!canAssess && !canVote && !canExecute && !canReview) {
     if (proposal.settled) {
       idleReason = "Settled. Nothing further to do here.";
     } else if (proposal.executed) {
       idleReason = isGrant
         ? "Waiting for a delivery review before the next tranche can be released."
         : "In force. There is nothing to deliver, so there is nothing to review.";
+    } else if (!proposal.hasRules) {
+      // Without the rulebook there is nothing for the committee to judge against, so the
+      // write that would unstick this is not the one on this panel. Naming the real one
+      // is the difference between a dead end and an instruction.
+      idleReason = "The charter has no derived rules yet, so nothing can be judged. Derive them first.";
     } else if (votes === 0) {
-      idleReason = "The committee has not judged it yet. Nothing to do until it has.";
+      idleReason = "The committee has judged it and nobody has voted. Only a member can vote.";
     } else if (proposal.canExecute) {
       idleReason = "Nothing available, though the delay has passed. Reload the record.";
     } else if (proposal.isMember) {
@@ -69,7 +86,7 @@ export function gatingFor(proposal: GatingInput): Gating {
     }
   }
 
-  return { canVote, canExecute, canReview, idleReason };
+  return { canAssess, canVote, canExecute, canReview, idleReason };
 }
 
 /**

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import {
+  assessProposal,
   castVote,
   executeProposal,
   parseGen,
@@ -50,11 +51,14 @@ export function ProposalActions({
   account,
   isMember,
   quorumMet,
+  hasRules,
 }: {
   trust: string;
   proposal: Proposal;
   audit?: ProposalAudit;
   account?: string;
+  /** Whether the charter's rulebook has been derived. `assess_proposal` refuses without it. */
+  hasRules: boolean;
   isMember: boolean;
   /** Whether enough shares voted for quorum. */
   quorumMet: boolean;
@@ -68,6 +72,8 @@ export function ProposalActions({
     executed: proposal.executed,
     settled: proposal.settled,
     isMember,
+    verdict: proposal.verdict,
+    hasRules,
     // Quorum met is the most this reader can know. The contract stamps the timelock when
     // quorum is *reached* and keeps that timestamp in `op_ready_at`, which is not a view —
     // `get_proposal` returns no such field. So the delay cannot be computed here, and the
@@ -78,7 +84,18 @@ export function ProposalActions({
     canExecute: quorumMet,
   });
 
+  // Asking the committee to judge is permissionless and is a request, not a decision,
+  // so the gate is only the two things the contract itself refuses on: no rulebook yet,
+  // or a verdict that is no longer PENDING. Both live in `gatingFor` so they are tested.
   const buttons: WriteButton[] = [];
+  if (gating.canAssess) {
+    buttons.push({
+      action: "assess",
+      label: "Ask the committee to judge",
+      busyLabel: "Asking…",
+      onRun: () => assessProposal(trust, proposal.id, account, undefined),
+    });
+  }
 
   if (gating.canVote) {
     buttons.push({

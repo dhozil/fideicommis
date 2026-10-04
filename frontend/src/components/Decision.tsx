@@ -86,14 +86,17 @@ export function Decision({
   audit,
   state,
   members,
-  quorum,
-  trust,
-}: {
-  proposal: Proposal;
-  audit?: ProposalAudit;
-  state: ConstitutionalState;
-  members: Member[];
-  quorum: boolean | null;
+quorum,
+    trust,
+    hasRules,
+  }: {
+    proposal: Proposal;
+    audit?: ProposalAudit;
+    state: ConstitutionalState;
+    members: Member[];
+    quorum: boolean | null;
+    /** Whether the charter's rulebook has been derived. Gates `assess_proposal`. */
+    hasRules: boolean;
   /** The trust's own address, needed by every write. */
   trust: string;
 }) {
@@ -246,6 +249,7 @@ export function Decision({
           address ? members.find((m) => m.address.toLowerCase() === address.toLowerCase()) : undefined,
         )}
         quorumMet={quorum === true}
+        hasRules={hasRules}
       />
 
       {audit?.rationale ? (
@@ -278,12 +282,15 @@ export function DecisionList({
   state,
   members,
   trust,
+  hasRules,
 }: {
   proposals: Proposal[];
   audits: Record<string, ProposalAudit>;
   state: ConstitutionalState;
   members: Member[];
   trust: string;
+  /** Whether the charter's rulebook has been derived. Gates `assess_proposal`. */
+  hasRules: boolean;
 }) {
   if (!proposals.length) {
     return (
@@ -311,6 +318,7 @@ export function DecisionList({
           members={members}
           quorum={quorum}
           trust={trust}
+          hasRules={hasRules}
         />
       ))}
     </div>

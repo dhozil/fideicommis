@@ -213,6 +213,29 @@ export const submitProposal = (
   onStage?: (stage: WriteStage) => void,
 ) => submit(trust, "submit_proposal", [title, body, kind, amount, recipient], { from, onStage });
 
+/** Anyone may trigger the committee's judgment. Only a member may vote on it. */
+export const assessProposal = (
+  trust: string,
+  proposalId: string,
+  from?: string,
+  onStage?: (stage: WriteStage) => void,
+) => submit(trust, "assess_proposal", [proposalId], { from, onStage });
+
+/** Derive the rulebook from the charter. Anyone may call it, once per charter version. */
+export const bootstrapRules = (
+  trust: string,
+  from?: string,
+  onStage?: (stage: WriteStage) => void,
+) => submit(trust, "bootstrap_rules", [], { from, onStage });
+
+/** Name the addresses allowed to upgrade this contract. Operator only. */
+export const setCodeUpgraders = (
+  trust: string,
+  upgraders: string,
+  from?: string,
+  onStage?: (stage: WriteStage) => void,
+) => submit(trust, "set_code_upgraders", [upgraders], { from, onStage });
+
 export const castVote = (
   trust: string,
   proposalId: string,
