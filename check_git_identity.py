@@ -18,6 +18,7 @@ changes, this fails and says what to change.
 Run: python check_git_identity.py
 """
 
+import os
 import pathlib
 import re
 import subprocess
@@ -47,18 +48,43 @@ def git(*args) -> str:
 
 
 print("=== the identity that stamps the next commit ===")
+# `git config user.*` is per-machine state. It lives in .git/config, which is never
+# committed and does not travel with a clone, so a CI runner legitimately has no value
+# for it and asserting one there is asserting the runner's configuration rather than this
+# repository's.
+#
+# That is not a reason to drop the check — it is the reason the check has two halves and
+# only one of them can run on CI. The history half is the part that is in the repository,
+# and it is the part that runs. The config half runs on the machine that commits, which is
+# the only machine whose config could stamp anything at all.
+#
+# It failed on its first CI run with three red lines and an unset value, on a repository
+# whose 32 published commits are all correctly attributed. A check that reports the
+# runner's identity as a defect in the project is worse than no check.
+in_ci = os.environ.get("CI") == "true" or os.environ.get("GITHUB_ACTIONS") == "true"
+
 name = git("config", "user.name").strip()
 email = git("config", "user.email").strip()
-check("user.name is the owner", name == EXPECTED_NAME, name or "(unset)")
-check("user.email is the owner's noreply form", email == EXPECTED_EMAIL, email or "(unset)")
 
-if name != EXPECTED_NAME or email != EXPECTED_EMAIL:
-    print()
-    print("  Until this is fixed, every commit is attributed to whoever the config names,")
-    print("  and the published history drifts away from the owner one commit at a time:")
-    print()
-    print(f"    git config user.name  {EXPECTED_NAME}")
-    print(f"    git config user.email {EXPECTED_EMAIL}")
+if in_ci and not (name or email):
+    print(f"  skip  no local git identity on this runner, and none is expected")
+    print("        the history below is what this repository can prove")
+elif not (name or email):
+    print("  FAIL  no local git identity is configured")
+    print("        commits made here would fall back to whatever git invents, which is")
+    print("        usually 'Your Name <you@hostname>' and attributes to nobody")
+    failures.append("no local git identity configured")
+else:
+    check("user.name is the owner", name == EXPECTED_NAME, name or "(unset)")
+    check("user.email is the owner's noreply form", email == EXPECTED_EMAIL, email or "(unset)")
+
+    if name != EXPECTED_NAME or email != EXPECTED_EMAIL:
+        print()
+        print("  Until this is fixed, every commit is attributed to whoever the config names,")
+        print("  and the published history drifts away from the owner one commit at a time:")
+        print()
+        print(f"    git config user.name  {EXPECTED_NAME}")
+        print(f"    git config user.email {EXPECTED_EMAIL}")
 
 print()
 print("=== the history, which is the other half ===")
@@ -72,14 +98,20 @@ for identity, count in sorted(identities.items(), key=lambda kv: -kv[1]):
     )
 
 print()
-print("=== a name that is not the account would still render as a stranger ===")
-# GitHub links a commit to an account by email. A plausible-looking personal address that
-# belongs to nobody is harmless; one that belongs to somebody else attributes this work to
-# them, which is worse than attributing it to a bot.
-noreply = re.match(r"^\d+\+[a-z0-9-]+@users\.noreply\.github\.com$", email)
-check("the email is the per-account noreply form", bool(noreply), email)
-if email and "@users.noreply.github.com" not in email:
-    print("       a private address would be exposed in every commit; the noreply form is not")
+print("=== every author in the history is the owner's noreply form ===")
+# This is the half that travels. GitHub links a commit to an account by email address, so
+# an address belonging to nobody renders as a stranger and an address belonging to
+# somebody else hands them this work. The per-account form is the only one that both
+# attributes correctly and exposes nothing.
+authors = [line for line in git("log", "--format=%ae").splitlines() if line.strip()]
+per_account = [a for a in authors if re.match(r"^\d+\+[a-z0-9-]+@users\.noreply\.github\.com$", a)]
+check(
+    "every author address is the per-account noreply form",
+    len(per_account) == len(authors),
+    f"{len(per_account)}/{len(authors)} commits",
+)
+for address in sorted({a for a in authors if a not in per_account}):
+    print(f"       {address} is not a per-account noreply form")
 
 print()
 print("=== and no co-author trailers re-introducing another identity ===")
