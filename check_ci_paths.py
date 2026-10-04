@@ -43,7 +43,7 @@ for script, command in pkg.get("scripts", {}).items():
             failures.append(f"script {script} -> {workspace}")
 
 # Files the docs tell a reader to run.
-for doc in ["README.md", "CONTRIBUTING.md", "AGENTS.md"]:
+for doc in ["README.md", "CONTRIBUTING.md", "AGENTS.md", "VERCEL.md"]:
     text = pathlib.Path(doc).read_text(encoding="utf-8")
     # Prose only. A path inside a fenced code block or a comment is documentation of
     # the path, not a dependency on it, and this file's own comment about the old
@@ -66,6 +66,41 @@ for doc in ["README.md", "CONTRIBUTING.md", "AGENTS.md"]:
         print(f"  {mark} {doc} mentions {mentioned}")
         if not exists:
             failures.append(f"{doc} mentions {mentioned}")
+
+print()
+print("=== both Vercel configurations are present, because the Root Directory is not ours ===")
+# Vercel resolves `outputDirectory` relative to the project's Root Directory, which is a
+# dashboard setting. There is no vercel.json property for it — an attempt to add one is
+# rejected by the schema before the build starts — so the repository cannot pin it and has
+# to work either way instead.
+#
+# Two files, each written for the root it applies to, so a deployment succeeds whichever
+# one the project is set to:
+#
+#   Root Directory (empty)   ->  ./vercel.json         outputDirectory frontend/.next
+#   Root Directory frontend/ ->  ./frontend/vercel.json outputDirectory .next
+#
+# Asserting both exist is what stops a fix for one root from breaking the other, which is
+# the failure mode of adding the second file alone.
+for path, expected in [
+    ("vercel.json", "frontend/.next"),
+    ("frontend/vercel.json", ".next"),
+]:
+    checked += 1
+    target = pathlib.Path(path)
+    if not target.is_file():
+        failures.append(f"{path} is missing, so one Root Directory cannot deploy")
+        print(f"  FAIL {path} is missing")
+        continue
+    data = json.loads(target.read_text(encoding="utf-8"))
+    # removeprefix, not lstrip: lstrip takes a character *set*, so lstrip("./") on
+    # ".next" removes the n as well and yields "ext". It is the second time in this
+    # session that a path helper silently ate part of a filename.
+    got = str(data.get("outputDirectory", "")).removeprefix("./")
+    ok = got == expected
+    print(f"  {'ok  ' if ok else 'FAIL'} {path}  outputDirectory={got!r}")
+    if not ok:
+        failures.append(f"{path} outputDirectory is {got!r}, wanted {expected!r}")
 
 print()
 if failures:

@@ -7,22 +7,28 @@ itself.
 ## In the Vercel UI
 
 1. **Add New → Project**, and import `dhozil/fideicommis`.
-2. **Root Directory: clear it.** Set it to `frontend/` and the build fails with
+2. **Deploy.** Either Root Directory works — leave the field empty, or set it to
+   `frontend/`. Both are configured:
+
+   | Root Directory | file Vercel reads | `outputDirectory` |
+   | --- | --- | --- |
+   | *(empty)* | [`vercel.json`](vercel.json) | `frontend/.next` |
+   | `frontend/` | [`frontend/vercel.json`](frontend/vercel.json) | `.next` |
+
+   The error this avoids:
 
        Error: The Next.js output directory "frontend/.next" was not found at
        "/vercel/path0/frontend/frontend/.next"
 
-   This is the one setting that has to be changed in the UI, and it cannot be set from
-   `vercel.json` — that file is validated against a schema with
-   `additionalProperties: false` and has no property for it. An attempt to add one is
-   rejected before the build starts:
+   Vercel resolves `outputDirectory` relative to the Root Directory, so one setting with
+   the other root's value produces a path that cannot exist. There is no `rootDirectory`
+   property in `vercel.json` — it is validated with `additionalProperties: false`, and
+   adding one is rejected before the build starts:
 
        The `vercel.json` schema validation failed ... should NOT have additional property
 
-3. **Framework Preset**: Next.js. It will be detected; `vercel.json` states it too.
-4. **Build Command** and **Output Directory** come from `vercel.json`, which Vercel reads.
-   Leave the UI fields alone.
-5. **Environment Variables**: none are required. Every variable the reader reads has a
+   So the repository cannot pin the setting, and carries a config for each root instead.
+3. **Environment Variables**: none are required. Every variable the reader reads has a
    default in the source, so a deployment with an empty environment variable list builds
    and runs against Studionet. `.env.example` documents each one if you want to override.
 
@@ -30,13 +36,12 @@ Then **Deploy**. No key goes in there, and none is possible: the reader holds no
 signs nothing, and `check_deploy.py` fails the build if any file under `frontend/src`
 reads a variable whose name contains `PRIVATE`, `KEY`, `SECRET` or `MNEMONIC`.
 
-## Why this file exists at all
+## Why there are two `vercel.json` files
 
-Every Vercel setting except one is in `vercel.json`, and that one is here because it lives
-in Vercel's dashboard rather than in the repository. A page of documentation is the only
-thing that can carry it, which is a weak form of delivery — it is recorded here because the
-alternative is a build error that names a missing directory rather than the setting that
-caused it.
+The Root Directory lives in Vercel's dashboard and has no equivalent in the repository, so
+one of these two is right and the repository cannot tell which. Writing both means the
+deployment succeeds either way, and `check_ci_paths.py` asserts both are present with the
+value each root needs — otherwise a fix for one root silently breaks the other.
 
 ## What is worth checking afterwards
 
