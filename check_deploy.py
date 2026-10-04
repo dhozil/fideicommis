@@ -29,6 +29,7 @@ import re
 import shutil
 import subprocess
 import sys
+import urllib.request
 
 failures = []
 notes = []
@@ -89,30 +90,35 @@ else:
         check(f"workspace '{workspace}' exists", pathlib.Path(workspace).is_dir())
 
 print()
-print("=== the Root Directory is pinned here, not left to the UI ===")
-# Vercel resolves `outputDirectory` relative to the *Root Directory*, not the repository
-# root, so a Root Directory of `frontend/` makes `frontend/.next` resolve to
-# `frontend/frontend/.next` — a path that cannot exist, reported as a missing build.
+print("=== every key here is one Vercel accepts ===")
+# `vercel.json` is validated against openapi.vercel.sh/vercel.json with
+# additionalProperties: false, so a single unknown key fails the build before anything
+# runs. `rootDirectory` was added here to pin the root from the repository, and Vercel
+# rejected it exactly as it should: it is a project setting in the dashboard, not a
+# property of this file.
 #
-# That setting lives in the Vercel UI, which is why it survived a push: the repository
-# says nothing, and a page load of documentation cannot change it. Vercel reads
-# `rootDirectory` from vercel.json and that overrides the UI field, so the setting is
-# pinned in the file the platform actually reads.
-#
-# The cost of that is worth stating rather than hiding: declaring it here means the UI
-# field is misleading if someone edits it, because the file wins. That is the right way
-# round — a setting that cannot drift beats a setting that can.
-declared = vercel.get("rootDirectory")
-check(
-    "rootDirectory is declared in vercel.json",
-    declared is not None,
-    str(declared) if declared is not None else "absent, so the UI field decides",
-)
-check(
-    "and it is the repository root",
-    declared in (".", "./", ""),
-    f"rootDirectory={declared!r}",
-)
+# So the schema is fetched and the keys compared, because "I believe this is allowed" is
+# the reasoning that produced the mistake. The check is skipped rather than failed when
+# the schema cannot be reached, because a network fault is not a property of this file.
+SCHEMA_URL = vercel.get("$schema")
+allowed: set[str] | None = None
+if isinstance(SCHEMA_URL, str) and SCHEMA_URL.startswith("http"):
+    try:
+        request = urllib.request.Request(SCHEMA_URL, headers={"User-Agent": "fideicommis-ci"})
+        with urllib.request.urlopen(request, timeout=60) as response:
+            schema = json.loads(response.read().decode("utf-8"))
+        allowed = set(schema.get("properties", {}))
+        print(f"  ok   schema fetched, {len(allowed)} allowed properties")
+        if schema.get("additionalProperties") is False:
+            print("       and additionalProperties is false: an unknown key fails the build")
+    except Exception as error:  # noqa: BLE001 - a network fault is not a defect here
+        print(f"  skip the schema could not be fetched: {type(error).__name__}")
+
+if allowed is not None:
+    unknown = sorted(set(vercel) - allowed)
+    check("no key outside the schema", not unknown, f"unknown: {unknown}" if unknown else "all allowed")
+    for key in unknown:
+        print(f"       {key} is not a property of vercel.json; Vercel rejects it before building")
 
 print()
 print("=== outputDirectory is where the build writes ===")
@@ -127,27 +133,19 @@ check(
     pathlib.Path(out, "BUILD_ID").exists(),
     "BUILD_ID present" if pathlib.Path(out, "BUILD_ID").exists() else "no BUILD_ID — run the build first",
 )
-
-# Resolved the way Vercel does, against the declared root, so the check itself cannot
-# drift from the platform's rule.
-base = pathlib.Path(declared if declared else ".")
-resolved = (base / out).as_posix().lstrip("./")
-check(
-    "the resolved path exists",
-    pathlib.Path(resolved, "BUILD_ID").exists(),
-    f"rootDirectory {declared!r} + {out} -> {resolved}",
-)
 check(
     "and is not doubled",
-    not pathlib.Path(base, out, out).exists(),
-    f"would be {base.as_posix()}/{out}/{out}",
+    not pathlib.Path("frontend", out).exists(),
+    f"a Root Directory of frontend/ would resolve {out} to frontend/{out}",
 )
 
 print()
-print(f"  Vercel resolves outputDirectory relative to rootDirectory, not the repo root:")
-print(f"    rootDirectory .        +  {out}  ->  {out}   correct")
-print(f"    rootDirectory frontend/ + {out}  ->  frontend/{out}  cannot exist")
-print("  rootDirectory is pinned above so the second case cannot be reached by accident.")
+print("  Vercel resolves outputDirectory relative to the Root Directory, not the repo root:")
+print(f"    Root Directory (empty)  ->  {out}            correct")
+print(f"    Root Directory frontend/ ->  frontend/{out}  cannot exist")
+print("  That setting lives in the Vercel dashboard and cannot be pinned from here:")
+print("  vercel.json has no property for it. Clear the field if a build reports a path")
+print("  ending in frontend/frontend/.next.")
 
 print()
 print("=== framework matches the dependency ===")

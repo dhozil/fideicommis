@@ -7,11 +7,22 @@ itself.
 ## In the Vercel UI
 
 1. **Add New → Project**, and import `dhozil/fideicommis`.
-2. **Framework Preset**: Next.js. It will be detected; `vercel.json` states it too.
-3. **Build Command**, **Output Directory**, **Root Directory**: all three are set in
-   `vercel.json`, which is read by Vercel and takes precedence over the UI fields. You do
-   not need to touch them, and if the UI shows something different, the file wins.
-4. **Environment Variables**: none are required. Every variable the reader reads has a
+2. **Root Directory: clear it.** Set it to `frontend/` and the build fails with
+
+       Error: The Next.js output directory "frontend/.next" was not found at
+       "/vercel/path0/frontend/frontend/.next"
+
+   This is the one setting that has to be changed in the UI, and it cannot be set from
+   `vercel.json` — that file is validated against a schema with
+   `additionalProperties: false` and has no property for it. An attempt to add one is
+   rejected before the build starts:
+
+       The `vercel.json` schema validation failed ... should NOT have additional property
+
+3. **Framework Preset**: Next.js. It will be detected; `vercel.json` states it too.
+4. **Build Command** and **Output Directory** come from `vercel.json`, which Vercel reads.
+   Leave the UI fields alone.
+5. **Environment Variables**: none are required. Every variable the reader reads has a
    default in the source, so a deployment with an empty environment variable list builds
    and runs against Studionet. `.env.example` documents each one if you want to override.
 
@@ -19,22 +30,13 @@ Then **Deploy**. No key goes in there, and none is possible: the reader holds no
 signs nothing, and `check_deploy.py` fails the build if any file under `frontend/src`
 reads a variable whose name contains `PRIVATE`, `KEY`, `SECRET` or `MNEMONIC`.
 
-## About the Root Directory
+## Why this file exists at all
 
-If the UI has it set to `frontend/`, a build fails with:
-
-    Error: The Next.js output directory "frontend/.next" was not found at
-    "/vercel/path0/frontend/frontend/.next"
-
-Nothing is missing. Vercel resolves `outputDirectory` relative to the Root Directory rather
-than to the repository root, so the two compound:
-
-    rootDirectory .         +  frontend/.next  ->  frontend/.next            correct
-    rootDirectory frontend/ +  frontend/.next  ->  frontend/frontend/.next  cannot exist
-
-[`vercel.json`](vercel.json) now declares `"rootDirectory": "."`, which overrides the UI
-field. Redeploying after a pull of that file is enough; clearing the field is not required,
-though it will stop the UI showing something that does not apply.
+Every Vercel setting except one is in `vercel.json`, and that one is here because it lives
+in Vercel's dashboard rather than in the repository. A page of documentation is the only
+thing that can carry it, which is a weak form of delivery — it is recorded here because the
+alternative is a build error that names a missing directory rather than the setting that
+caused it.
 
 ## What is worth checking afterwards
 
