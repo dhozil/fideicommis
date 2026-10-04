@@ -1596,9 +1596,17 @@ th.num {
   inset: 0;
   z-index: 200;
   display: flex;
-  align-items: center;
+  /* flex-start, not center. A centred panel taller than the viewport has its top clipped
+     above the fold and cannot be scrolled to, so the title and the close button — the two
+     things a stuck user needs — become unreachable. The panel centres itself with
+     `margin: auto` instead, which centres when it fits and pins to the top when it does
+     not. This is the whole "it doesn't fit" bug in one declaration. */
+  align-items: flex-start;
   justify-content: center;
   padding: 20px;
+  /* Scrolling belongs to the modal while it is open. Without this the page underneath
+     scrolls under the panel, which reads as the panel itself drifting off. */
+  overscroll-behavior: contain;
   background: rgba(4, 8, 10, 0.78);
   backdrop-filter: blur(3px);
   animation: wallet-fade 140ms ease-out;
@@ -1606,7 +1614,11 @@ th.num {
 
 .wallet-panel {
   width: min(440px, 100%);
-  max-height: min(640px, 88vh);
+  /* 88dvh rather than 88vh: on a mobile browser the dynamic viewport is the one that
+     accounts for the collapsing toolbar, so the panel never grows behind it. */
+  max-height: min(640px, 88dvh);
+  /* Centres the panel vertically when there is room, and is inert when there is not. */
+  margin: auto;
   overflow-y: auto;
   background: var(--raised);
   border: 1px solid var(--rule-strong);
@@ -1664,6 +1676,15 @@ th.num {
   border-radius: var(--radius);
   color: var(--ink);
   cursor: pointer;
+  /* A row in the wallet panel is not an action button, it is a list item naming a wallet
+     the user chose to have installed. It inherits the global button treatment otherwise:
+     the data face, 0.76rem, 0.1em tracking and UPPERCASE — so every wallet name rendered
+     as a shouted monospace label, and a long one was wider than the row. These three
+     lines put it back to prose. */
+  font-family: var(--prose);
+  font-size: 0.95rem;
+  letter-spacing: normal;
+  text-transform: none;
 }
 
 .wallet-row:hover:not(:disabled) {
@@ -1701,6 +1722,13 @@ th.num {
 
 .wallet-name {
   font-size: 0.95rem;
+  /* A flex child defaults to `min-width: auto`, which means it refuses to shrink below
+     its own content width. A wallet with a long name therefore pushed the row wider than
+     the 440px panel and the name ran off the edge. `min-width: 0` lets it shrink, and
+     `overflow-wrap` lets the text break inside an unbroken word — wallet names are not
+     spaces, so they do not wrap on their own. */
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .wallet-tag {

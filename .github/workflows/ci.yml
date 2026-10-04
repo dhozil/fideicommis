@@ -298,6 +298,33 @@ jobs:
       - name: no write is offered before the contract would accept it
         run: npx --yes tsx@4 tests/check_write_gating.mts
 
+      # The read budget is derived from two numbers, and both used to live only in a
+      # comment explaining the arithmetic. Adding six fixed views without editing the
+      # comment left `FIXED_READS` at ten, so a page asked for 34 reads against the node's
+      # 30-a-minute budget and the second tab of the same trust got throttled — which is
+      # the exact failure the arithmetic exists to prevent. The check counts the views
+      # actually sent and compares them to the constant.
+      - name: the read budget is what the comment says it is
+        run: npx --yes tsx@4 tests/check_read_budget.mts
+
+      # A modal that does not fit renders perfectly at the viewport nobody tested on. This
+      # one had a centred panel that clipped its own title and close button once it grew
+      # past the viewport height, wallet names rendered as uppercase monospace because they
+      # inherited the global button rule, and a long name overflowed a fixed-width panel
+      # because a flex child defaults to min-width:auto. All three are invisible in a
+      # screenshot at desktop width and all three are asserted here.
+      - name: the wallet chooser fits at any viewport
+        run: npx --yes tsx@4 tests/check_wallet_layout.mts
+
+      # The mission-log entries are JSON documents inside JSON strings. The first version
+      # of the panel compared an entry to the mission as text, which can never match, so it
+      # reported drift on every trust including the ones that had drifted least. A warning
+      # that always fires teaches a reader to ignore the only cross-view comparison in the
+      # reader. The decoder was moved to lib/ so this imports the real function rather
+      # than transcribing it out of a component.
+      - name: the drift warning can only fire on real drift
+        run: npx --yes tsx@4 tests/check_mission_log.mts
+
       # Negative caching is the one change here that could make the reader lie: a
       # remembered "this node has no record of it", replayed after the transaction
       # settled, would report an absence for something real. Three ways that could go

@@ -1,6 +1,7 @@
 "use client";
 
 import { gen } from "@/lib/format";
+import { decodeMissionEntry, missionMatches } from "@/lib/mission-log";
 
 /**
  * The trust's declared purpose, and what has changed about it.
@@ -15,11 +16,14 @@ import { gen } from "@/lib/format";
  * the only place the two are ever compared.
  */
 export function Mission({ mission, missionLog }: { mission: string; missionLog: string[] }) {
-  // A mission log that grows while the mission does not is worth stopping at. An update
-  // the declared purpose does not reflect is either drift nobody noticed or a change
-  // made while no one was looking.
-  const last: string | null = missionLog.length ? (missionLog[missionLog.length - 1] as string) : null;
-  const matches = last === null || normalize(last) === normalize(mission);
+  // The decoding lives in `lib/mission-log.ts` and is imported, not reimplemented: the
+  // previous version compared the raw entry to the mission as text, which could never
+  // match, and it reported drift on every trust. See that file for the shape the node
+  // actually returns.
+  const entries = missionLog.map(decodeMissionEntry);
+  const matches = missionMatches(mission, entries);
+  const last = entries.length ? entries[entries.length - 1] : undefined;
+  const lastEntryText = last?.mission ?? last?.raw ?? "";
 
   return (
     <div>
@@ -38,19 +42,22 @@ export function Mission({ mission, missionLog }: { mission: string; missionLog: 
             {missionLog.length} update{missionLog.length === 1 ? "" : "s"}
           </span>
           <ul className="log-list">
-            {missionLog.map((entry, index) => (
+            {entries.map((entry, index) => (
               <li key={`mission-${index}`}>
                 <code className="num">{index + 1}</code>
-                <span>{entry}</span>
+                <span>
+                  {entry.event ? <span className="faint">{entry.event} · </span> : null}
+                  {entry.mission ?? entry.raw}
+                </span>
               </li>
             ))}
           </ul>
-          {!matches && last ? (
+          {!matches ? (
             <p className="notice warn" style={{ marginTop: 10 }}>
               <strong>The latest update does not match the declared mission.</strong> The
               contract carries <code>{preview(mission)}</code> but the log&apos;s last
-              entry is <code>{preview(last)}</code>. One of the two is stale, and this
-              page cannot say which.
+              entry is <code>{preview(lastEntryText)}</code>. One of the two is stale, and
+              this page cannot say which.
             </p>
           ) : null}
         </div>
@@ -63,13 +70,11 @@ export function Mission({ mission, missionLog }: { mission: string; missionLog: 
   );
 }
 
-function normalize(text: string): string {
-  return text.replace(/\s+/g, " ").trim().toLowerCase();
-}
-
+/** A bounded excerpt, because a charter or a mission can be arbitrarily long. */
 function preview(text: string): string {
   return text.length > 90 ? `${text.slice(0, 90)}…` : text;
 }
+
 
 /**
  * Where every figure on the page comes from, and which versions preceded this one.

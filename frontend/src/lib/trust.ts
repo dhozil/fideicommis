@@ -42,20 +42,26 @@ import type {
  * The count is derived from the node's limit rather than guessed, so the two cannot
  * drift apart:
  *
- *     fixed reads            10
+ *     fixed reads            16
  *     per proposal            2   (the record, and the audit that explains it)
  *     node limit per minute  30
  *     slack                   2   so a second reader in the same minute still fits
- *     => (30 - 2 - 10) / 2 = 9
+ *     => (30 - 2 - 16) / 2 = 6
  *
- * Nine proposals is 28 reads, which leaves the node answerable for the rest of the
- * minute. Ten would be exactly 30 and would consume all of it, so opening the same
+ * Six proposals is 28 reads, which leaves the node answerable for the rest of the
+ * minute. Seven would be exactly 30 and would consume all of it, so opening the same
  * trust in two tabs would be enough to throttle the second one: the ordinary case, not
  * an edge one. Reads are batched, so 28 reads is about two requests rather than 28.
+ *
+ * `FIXED_READS` was 10 when there were ten fixed views, and it stayed 10 through the
+ * commit that added six more. Nothing failed: `MAX_PROPOSALS` was derived from the stale
+ * constant, so a page asked for 34 reads against a 30-read budget and the node throttled
+ * the second tab of the same trust — which is the exact outcome the arithmetic above
+ * exists to prevent. The number is asserted by `tests/check_read_budget.mts`.
  */
 const NODE_CALLS_PER_MINUTE = 30;
 const SLACK_CALLS = 2;
-const FIXED_READS = 10;
+const FIXED_READS = 16;
 const CALLS_PER_PROPOSAL = 2;
 const MAX_PROPOSALS = Math.floor((NODE_CALLS_PER_MINUTE - SLACK_CALLS - FIXED_READS) / CALLS_PER_PROPOSAL);
 
@@ -67,6 +73,17 @@ const MAX_PROPOSALS = Math.floor((NODE_CALLS_PER_MINUTE - SLACK_CALLS - FIXED_RE
  * killed by the platform holding the response open.
  */
 const RENDER_BUDGET_MS = 20_000;
+
+/**
+ * How much of the mission log one render reads.
+ *
+ * The contract caps a page at `MAX_LOG` entries and accepts any `limit`, so this is a
+ * choice rather than a limit imposed by the contract. Fifty is more than a reader can
+ * usefully scan and small enough that the payload stays inside the render budget. The
+ * page says how many it left out when the log is longer, because a log truncated
+ * silently is indistinguishable from a log that ended.
+ */
+const MISSION_LOG_LIMIT = 50;
 
 export async function readTrust(address: string): Promise<TrustRecord> {
   const addr = address.trim();
@@ -112,7 +129,12 @@ export async function readTrust(address: string): Promise<TrustRecord> {
     { method: "get_mission" },
     { method: "get_charter_history" },
     { method: "get_evidence_urls" },
-    { method: "get_mission_log" },
+    // `get_mission_log` is the one view here that takes arguments: `get_mission_log(
+    // offset, limit)`. It was called with none, which is not an empty log — it is a
+    // missing-parameter error, so every page load logged a degraded entry and the panel
+    // showed an empty list as if the trust had no history. `scripts/audit_new_views.cjs`
+    // is what caught it, and it asserts the call with arguments succeeds.
+    { method: "get_mission_log", args: [0, MISSION_LOG_LIMIT] },
   ];
 
   const answers = await readMany(addr, FIXED);
