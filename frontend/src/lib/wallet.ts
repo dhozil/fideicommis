@@ -4,22 +4,30 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient, chains } from "genlayer-js";
 import { createWalletClient, custom, type WalletClient } from "viem";
 import { EXPLORER_URL } from "./explorer";
+import {
+  useEip6963,
+  type DiscoveredWallet,
+  type Eip1193Provider,
+} from "./eip6963";
 
 /**
- * Wallet connection, EIP-6963.
+ * Wallet connection.
  *
- * The shape here follows the StrataSure reader, because it is the established
- * convention in this workspace and a reviewer of either project should not have
- * to learn the same wallet plumbing twice. The discovery model is the part that
- * matters: EIP-6963 announces every installed EVM wallet by name, so the app
- * offers the wallet that is actually present instead of assuming MetaMask and
- * silently ignoring Rabby.
+ * Discovery is EIP-6963 and lives in `eip6963.ts`, which is where the reasoning about
+ * the `window.ethereum` race lives. What this module does with a discovered wallet is
+ * the rest: connect, track the account and chain, switch network, sign.
  *
- * One deliberate difference from a typical dApp: this app never holds a key.
- * The provider is only ever asked to sign, the connection is the user's own
- * wallet, and no private key exists anywhere in the build. That is what makes it
- * safe to point at a trust whose whole point is that its operator cannot take
- * the money.
+ * The identifier is the wallet's own EIP-6963 uuid rather than a hardcoded union of
+ * "metamask" | "rabby". That union was the previous shape and it was wrong twice over:
+ * it made every wallet that is not one of those two invisible, and it meant the app had
+ * to guess a name to display for anything it found. A wallet that announces itself
+ * already knows its own name, icon and rdns, and the app's job is to show them rather
+ * than to name them.
+ *
+ * One deliberate difference from a typical dApp: this app never holds a key. The provider
+ * is only ever asked to sign, the connection is the user's own wallet, and no private key
+ * exists anywhere in the build. That is what makes it safe to point at a trust whose
+ * whole point is that its operator cannot take the money.
  */
 
 const RPC_URL = process.env.NEXT_PUBLIC_GENLAYER_RPC_URL ?? "https://studio.genlayer.com/api";
@@ -44,28 +52,15 @@ const NETWORK = {
   blockExplorerUrls: [EXPLORER_URL],
 };
 
-type Provider = {
-  isMetaMask?: boolean;
-  isRabby?: boolean;
-  name?: string;
-  request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
-  /** EIP-1193 event API. Present on every real injected wallet. */
-  on?: (event: string, handler: (...args: never[]) => void) => void;
-  removeListener?: (event: string, handler: (...args: never[]) => void) => void;
-};
+type Provider = Eip1193Provider;
 
-type ProviderInfo = { uuid: string; name: string; icon: string; rdns: string };
-type ProviderDetail = { info: ProviderInfo; provider: Provider };
+/**
+ * A wallet id is whatever the wallet called itself, so this is an opaque string rather
+ * than a union of the two wallets this app was first written against.
+ */
+export type WalletId = string;
 
-export type WalletId = "metamask" | "rabby";
-
-export type WalletOption = {
-  id: WalletId;
-  name: string;
-  icon: string;
-  rdns: string;
-  provider: Provider;
-};
+export type WalletOption = DiscoveredWallet;
 
 export type WalletState = {
   address: string | null;
@@ -75,56 +70,27 @@ export type WalletState = {
   onStudionet: boolean;
   busy: boolean;
   error: string | null;
+  /** True while announcements may still be arriving, so the UI can hold off claiming none. */
+  settling: boolean;
   connect: (id?: WalletId) => Promise<void>;
   disconnect: () => void;
   switchNetwork: () => Promise<void>;
   refresh: () => void;
 };
 
-declare global {
-  interface Window {
-    ethereum?: Provider & { providers?: Provider[] };
-  }
-}
-
-function kindOf(provider: Provider, info?: ProviderInfo): WalletId | null {
-  const name = `${(provider as { name?: string }).name ?? ""} ${info?.name ?? ""}`.toLowerCase();
-  const rdns = (info?.rdns ?? "").toLowerCase();
-  if (provider.isRabby || name.includes("rabby") || rdns.includes("rabby")) return "rabby";
-  if (provider.isMetaMask || name.includes("metamask") || rdns.includes("metamask")) return "metamask";
-  return null;
-}
-
-function optionOf(provider: Provider, info?: ProviderInfo): WalletOption | null {
-  const id = kindOf(provider, info);
-  if (!id) return null;
-  return { id, name: id === "metamask" ? "MetaMask" : "Rabby", icon: info?.icon ?? "", rdns: info?.rdns ?? id, provider };
-}
-
-const announced = new Map<string, WalletOption>();
+/** Which provider is in use. Set only by an explicit choice, never by a fallback read. */
 let active: Provider | null = null;
 let activeId: WalletId | null = null;
 
-function legacy(): Provider[] {
-  if (typeof window === "undefined" || !window.ethereum) return [];
-  const list = window.ethereum.providers?.length ? window.ethereum.providers : [window.ethereum];
-  return list.filter((p, i) => list.indexOf(p) === i);
+export function walletProvider(): Provider | null {
+  return active;
 }
+
+/** The last discovered list, so non-hook callers can reach the chosen provider. */
+let discovered: WalletOption[] = [];
 
 export function availableWallets(): WalletOption[] {
-  const found = new Map<string, WalletOption>();
-  announced.forEach((o) => found.set(o.id, o));
-  legacy().forEach((p) => {
-    const o = optionOf(p);
-    if (o) found.set(o.id, o);
-  });
-  return (["metamask", "rabby"] as WalletId[]).map((id) => found.get(id)).filter((o): o is WalletOption => Boolean(o));
-}
-
-export function walletProvider(): Provider | null {
-  if (active) return active;
-  if (typeof window !== "undefined" && window.ethereum) return window.ethereum;
-  return availableWallets()[0]?.provider ?? null;
+  return discovered;
 }
 
 async function call(method: string, params: unknown[] = []): Promise<unknown> {
@@ -166,46 +132,20 @@ export function walletClient(): WalletClient | null {
 }
 
 export function useWallet(): WalletState {
-  const [wallets, setWallets] = useState<WalletOption[]>([]);
+  const { wallets, settling, requestAgain } = useEip6963();
   const [address, setAddress] = useState<string | null>(null);
   const [selected, setSelected] = useState<WalletId | null>(null);
   const [chainId, setChainId] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [nonce, setNonce] = useState(0);
 
-  const refresh = useCallback(() => setNonce((n) => n + 1), []);
+  const refresh = useCallback(() => requestAgain(), [requestAgain]);
 
-  // EIP-6963 discovery, and the legacy fallback for wallets that never announce.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const onAnnounce = (event: Event) => {
-      const detail = (event as CustomEvent<ProviderDetail>).detail;
-      if (!detail?.provider || !detail?.info) return;
-      const option = optionOf(detail.provider, detail.info);
-      if (option) {
-        announced.set(option.id, option);
-        setWallets(availableWallets());
-      }
-    };
-    window.addEventListener("eip6963:announceProvider", onAnnounce);
-    window.dispatchEvent(new Event("eip6963:requestProvider"));
-    setWallets(availableWallets());
-
-    const onAccounts = (accounts: string[] | undefined) => setAddress(accounts?.[0] ?? null);
-    const onChain = (hex: string | undefined) => setChainId(hex ? Number.parseInt(hex, 16) : null);
-    const provider = window.ethereum;
-    provider?.request({ method: "eth_accounts" }).then((a) => onAccounts(a as string[])).catch(() => undefined);
-    provider?.request({ method: "eth_chainId" }).then((c) => onChain(c as string)).catch(() => undefined);
-    provider?.on?.("accountsChanged", onAccounts as never);
-    provider?.on?.("chainChanged", onChain as never);
-
-    return () => {
-      window.removeEventListener("eip6963:announceProvider", onAnnounce);
-      provider?.removeListener?.("accountsChanged", onAccounts as never);
-      provider?.removeListener?.("chainChanged", onChain as never);
-    };
-  }, []);
+  // Available to non-hook callers such as actions.ts, which signs through the provider
+  // the user chose rather than reaching for window.ethereum.
+  useMemo(() => {
+    discovered = wallets;
+  }, [wallets]);
 
   const connect = useCallback(
     async (id?: WalletId) => {
@@ -213,27 +153,37 @@ export function useWallet(): WalletState {
       setError(null);
       try {
         if (id) {
-          const option = availableWallets().find((w) => w.id === id);
-          if (!option) throw new Error(`${id === "metamask" ? "MetaMask" : "Rabby"} was not found in this browser`);
+          const option = wallets.find((w) => w.id === id);
+          if (!option) {
+            throw new Error(
+              "That wallet is no longer available. Close this panel and open it again to " +
+                "see the wallets this browser has.",
+            );
+          }
           active = option.provider;
           activeId = option.id;
           setSelected(option.id);
-          if (typeof window !== "undefined") localStorage.setItem("fideicommis_wallet", option.id);
+          if (typeof window !== "undefined") {
+            localStorage.setItem("fideicommis_wallet", option.id);
+            localStorage.setItem("fideicommis_wallet_rdns", option.rdns);
+          }
         }
-        const accounts = (await call("eth_requestAccounts")) as string[];
-        if (!accounts?.length) throw new Error("No accounts returned");
+        if (!active) throw new Error("Choose a wallet first");
+
+        const accounts = (await active.request({ method: "eth_requestAccounts" })) as string[];
+        if (!accounts?.length) throw new Error("That wallet returned no accounts");
         setAddress(accounts[0] ?? null);
 
-        const hex = (await call("eth_chainId")) as string;
+        const hex = (await active.request({ method: "eth_chainId" })) as string;
         setChainId(Number.parseInt(hex, 16));
         if (Number.parseInt(hex, 16) !== CHAIN_ID) await switchNetwork();
       } catch (err) {
-        setError((err as Error).message);
+        setError(friendlyError(err));
       } finally {
         setBusy(false);
       }
     },
-    [],
+    [wallets],
   );
 
   const disconnect = useCallback(() => {
@@ -241,20 +191,56 @@ export function useWallet(): WalletState {
     activeId = null;
     setAddress(null);
     setSelected(null);
-    if (typeof window !== "undefined") localStorage.removeItem("fideicommis_wallet");
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("fideicommis_wallet");
+      localStorage.removeItem("fideicommis_wallet_rdns");
+    }
   }, []);
 
-  // Remember the choice across reloads without prompting.
+  // Track the connected wallet, not window.ethereum. Listening to the wrong provider is
+  // how a UI shows an account that the wallet the user picked no longer controls.
+  useEffect(() => {
+    if (!active) return;
+    const provider = active;
+    const onAccounts = (accounts: string[] | undefined) => setAddress(accounts?.[0] ?? null);
+    const onChain = (hex: string | undefined) => setChainId(hex ? Number.parseInt(hex, 16) : null);
+
+    provider
+      .request({ method: "eth_accounts" })
+      .then((a) => onAccounts(a as string[]))
+      .catch(() => undefined);
+    provider
+      .request({ method: "eth_chainId" })
+      .then((c) => onChain(c as string))
+      .catch(() => undefined);
+    provider.on?.("accountsChanged", onAccounts as never);
+    provider.on?.("chainChanged", onChain as never);
+
+    return () => {
+      provider.removeListener?.("accountsChanged", onAccounts as never);
+      provider.removeListener?.("chainChanged", onChain as never);
+    };
+  }, [selected, wallets.length]);
+
+  // A previously chosen wallet is restored without prompting. Matched on rdns, which is
+  // stable across versions, rather than on the uuid, which changes on every page load —
+  // so remembering the uuid would restore nothing after a refresh.
   useMemo(() => {
     if (selected || typeof window === "undefined" || !wallets.length) return;
-    const saved = localStorage.getItem("fideicommis_wallet") as WalletId | null;
-    if (!saved) return;
-    const option = saved ? wallets.find((w) => w.id === saved) : wallets[0];
-    if (option && option.provider) {
-      active = option.provider;
-      activeId = option.id;
-      setSelected(option.id);
+    const savedRdns = localStorage.getItem("fideicommis_wallet_rdns");
+    const savedId = localStorage.getItem("fideicommis_wallet");
+    if (!savedRdns && !savedId) return;
+    const option = wallets.find((w) => w.rdns === savedRdns) ?? wallets.find((w) => w.id === savedId);
+    if (!option) {
+      // The wallet this browser was using is not here any more. Say so by not guessing:
+      // clearing the stored choice is better than silently selecting a different wallet.
+      localStorage.removeItem("fideicommis_wallet");
+      localStorage.removeItem("fideicommis_wallet_rdns");
+      return;
     }
+    active = option.provider;
+    activeId = option.id;
+    setSelected(option.id);
   }, [wallets, selected]);
 
   return {
@@ -265,11 +251,31 @@ export function useWallet(): WalletState {
     onStudionet: chainId === CHAIN_ID,
     busy,
     error,
+    settling,
     connect,
     disconnect,
     switchNetwork,
     refresh,
   };
+}
+
+/**
+ * Turn a wallet's rejection into a sentence.
+ *
+ * EIP-1193 error 4001 is the user pressing cancel, and the message a provider sends with
+ * it is often a wall of JSON that means nothing to the person who triggered it. Naming
+ * the cancel is the difference between a user retrying and a user giving up.
+ */
+function friendlyError(error: unknown): string {
+  const code = (error as { code?: number }).code;
+  const message = (error as Error)?.message ?? "Something went wrong";
+  if (code === 4001) return "You cancelled in your wallet.";
+  if (/user rejected|user denied|rejected the request/i.test(message)) {
+    return "You cancelled in your wallet.";
+  }
+  if (code === -32002) return "That request is already open in your wallet.";
+  if (/locked|unlock/i.test(message)) return "Your wallet is locked. Unlock it and try again.";
+  return message.length > 220 ? `${message.slice(0, 220)}…` : message;
 }
 
 export { CHAIN_ID, CHAIN_ID_HEX, NETWORK, RPC_URL };

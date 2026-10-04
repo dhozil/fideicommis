@@ -284,6 +284,13 @@ jobs:
       - name: the transaction panel keeps its four verdicts apart
         run: npx --yes tsx@4 tests/check_tx_verdict.mts
 
+      # Wallet discovery is invisible in a screenshot and wrong in four specific ways:
+      # reading window.ethereum races between installed wallets, a hardcoded name list
+      # hides every wallet not on it, a listener attached after the request loses
+      # announcements, and a request sent only once never finds a wallet installed later.
+      - name: every wallet is offered by name, and nothing is guessed
+        run: npx --yes tsx@4 tests/check_wallet_discovery.mts
+
       # Negative caching is the one change here that could make the reader lie: a
       # remembered "this node has no record of it", replayed after the transaction
       # settled, would report an absence for something real. Three ways that could go

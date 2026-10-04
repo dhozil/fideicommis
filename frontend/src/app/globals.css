@@ -1246,6 +1246,172 @@ th.num {
   top: 12px;
 }
 
+/* The wallet chooser.
+ *
+ * A modal over a page whose subject is a trust that holds money has one job above
+ * everything else: make it obvious which wallet is about to sign. So the overlay dims
+ * the page hard, the panel is the only lit thing on screen, and each row is a full-width
+ * target rather than a small button in a list.
+ *
+ * `position: fixed` with an inset rather than a scroll container, because the panel is
+ * opened from a wallet button in the page header and the page scrolls independently.
+ */
+.wallet-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(4, 8, 10, 0.78);
+  backdrop-filter: blur(3px);
+  animation: wallet-fade 140ms ease-out;
+}
+
+.wallet-panel {
+  width: min(440px, 100%);
+  max-height: min(640px, 88vh);
+  overflow-y: auto;
+  background: var(--raised);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  padding: 18px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+}
+
+.wallet-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.wallet-head h3 {
+  margin: 0;
+  font-size: 1.12rem;
+}
+
+.wallet-close {
+  background: none;
+  border: none;
+  color: var(--ink-dim);
+  font-size: 1.4rem;
+  line-height: 1;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.wallet-close:hover {
+  color: var(--ink);
+}
+
+.wallet-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wallet-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  padding: 10px 12px;
+  text-align: left;
+  background: var(--ground);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.wallet-row:hover:not(:disabled) {
+  border-color: var(--brass);
+  background: color-mix(in srgb, var(--brass) 8%, var(--ground));
+}
+
+.wallet-row:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.wallet-row.is-current {
+  border-color: var(--verified);
+}
+
+.wallet-icon,
+.wallet-letter {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+}
+
+.wallet-letter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ground);
+  border: 1px solid var(--rule);
+  color: var(--brass);
+  font-family: var(--data);
+  font-size: 0.8rem;
+}
+
+.wallet-name {
+  font-size: 0.95rem;
+}
+
+.wallet-tag {
+  margin-left: 10px;
+  font-family: var(--data);
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.wallet-foot {
+  margin: 10px 0 0;
+  font-size: 0.82rem;
+  color: var(--ink-dim);
+}
+
+.wallet-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wallet-installs {
+  display: flex;
+  gap: 14px;
+  margin: 4px 0 2px;
+  font-size: 0.86rem;
+}
+
+.wallet-again {
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 8px 14px;
+  font-size: 0.78rem;
+}
+
+@keyframes wallet-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 :focus-visible {
   outline: 2px solid var(--brass);
   outline-offset: 2px;

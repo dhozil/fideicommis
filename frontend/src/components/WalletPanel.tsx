@@ -3,22 +3,23 @@
 import { useEffect, useState } from "react";
 import { useWallet } from "@/lib/wallet";
 import { shortAddress } from "@/lib/explorer";
+import { WalletChooser } from "@/components/WalletChooser";
 
 /**
  * Connecting a wallet.
  *
- * Discovery is EIP-6963 rather than a list of window.ethereum sniff, so the page
- * does not have to guess which wallet is installed. Signing happens in the browser
- * through the injected provider; this site never sees a key, which is why it can
- * offer to act on a trust without asking anyone to trust it with anything.
+ * The button opens a list of the wallets this browser has, discovered over EIP-6963,
+ * rather than connecting on click. That is deliberate: `window.ethereum` is a single
+ * slot that several wallets write to, so an app that reads it connects whichever one
+ * injected last. Asking first is what makes the choice the user's.
  *
- * The failure states are the ones that actually happen and none of them are
- * "something went wrong": no wallet installed, the user dismissed the prompt,
- * rejected the request, switched to the wrong chain, or a network that is not in
- * their wallet at all.
+ * The failure states are the ones that actually happen, and none of them is "something
+ * went wrong": no wallet installed, discovery still running, the user cancelled, the
+ * wallet is locked, the wrong chain, or a network their wallet has never heard of.
  */
 export function WalletPanel() {
   const wallet = useWallet();
+  const [choosing, setChoosing] = useState(false);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -29,36 +30,20 @@ export function WalletPanel() {
 
   return (
     <div className="panel" style={{ padding: 14, minWidth: 250 }}>
-      {!wallet.wallets.length ? (
-        <>
-          <span className="eyebrow" style={{ marginBottom: 6 }}>
-            No wallet found
-          </span>
-          <p className="muted" style={{ fontSize: "0.86rem", margin: 0 }}>
-            This page reads without one. Install a wallet such as MetaMask or Rabby to
-            fund the trust or advance its cycle.
-          </p>
-        </>
-      ) : !wallet.address ? (
+      {!wallet.address ? (
         <>
           <span className="eyebrow" style={{ marginBottom: 8 }}>
             Act on a trust
           </span>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {wallet.wallets.map((entry) => (
-              <button
-                key={entry.id}
-                type="button"
-                onClick={() => wallet.connect(entry.id)}
-                disabled={wallet.busy}
-                style={{ padding: "9px 13px", fontSize: "0.7rem" }}
-              >
-                {entry.name}
-              </button>
-            ))}
-          </div>
+          <button type="button" onClick={() => setChoosing(true)} disabled={wallet.busy}>
+            Connect wallet
+          </button>
           <p className="faint" style={{ fontSize: "0.78rem", margin: "10px 0 0" }}>
-            Your key stays in the wallet. Nothing is sent to this site.
+            {wallet.settling
+              ? "Looking for installed wallets…"
+              : wallet.wallets.length
+                ? `${wallet.wallets.length} wallet${wallet.wallets.length === 1 ? "" : "s"} available — you pick which one.`
+                : "No wallet detected. This page reads without one."}
           </p>
         </>
       ) : (
@@ -93,6 +78,21 @@ export function WalletPanel() {
           ) : null}
         </>
       )}
+
+      {choosing ? (
+        <WalletChooser
+          wallets={wallet.wallets}
+          settling={wallet.settling}
+          busy={wallet.busy}
+          selected={wallet.selected}
+          onDismiss={() => setChoosing(false)}
+          onRequestAgain={wallet.refresh}
+          onPick={async (id) => {
+            setChoosing(false);
+            await wallet.connect(id);
+          }}
+        />
+      ) : null}
 
       {wallet.error ? (
         <p
