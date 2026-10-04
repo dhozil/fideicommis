@@ -7,12 +7,11 @@ itself.
 ## In the Vercel UI
 
 1. **Add New → Project**, and import `dhozil/fideicommis`.
-2. **Root Directory: leave it EMPTY.** Not `frontend/`. This is the only setting that
-   breaks the build, and it breaks it in a way that looks like a missing build.
-3. **Framework Preset**: Next.js. It will be detected; `vercel.json` states it too.
-4. **Build Command**: `npm run build`. **Output Directory**: `frontend/.next`. Both are in
-   `vercel.json`, so the fields should fill themselves — check that they did.
-5. **Environment Variables**: none are required. Every variable the reader reads has a
+2. **Framework Preset**: Next.js. It will be detected; `vercel.json` states it too.
+3. **Build Command**, **Output Directory**, **Root Directory**: all three are set in
+   `vercel.json`, which is read by Vercel and takes precedence over the UI fields. You do
+   not need to touch them, and if the UI shows something different, the file wins.
+4. **Environment Variables**: none are required. Every variable the reader reads has a
    default in the source, so a deployment with an empty environment variable list builds
    and runs against Studionet. `.env.example` documents each one if you want to override.
 
@@ -20,20 +19,22 @@ Then **Deploy**. No key goes in there, and none is possible: the reader holds no
 signs nothing, and `check_deploy.py` fails the build if any file under `frontend/src`
 reads a variable whose name contains `PRIVATE`, `KEY`, `SECRET` or `MNEMONIC`.
 
-## If the build fails with a doubled path
+## About the Root Directory
+
+If the UI has it set to `frontend/`, a build fails with:
 
     Error: The Next.js output directory "frontend/.next" was not found at
     "/vercel/path0/frontend/frontend/.next"
 
-That is the Root Directory set to `frontend/`. Vercel resolves `outputDirectory` relative
-to the Root Directory rather than to the repository root, so the two settings compound:
+Nothing is missing. Vercel resolves `outputDirectory` relative to the Root Directory rather
+than to the repository root, so the two compound:
 
-    Root Directory = (empty)     ->  frontend/.next             correct
-    Root Directory = frontend/   ->  frontend/frontend/.next   cannot exist
+    rootDirectory .         +  frontend/.next  ->  frontend/.next            correct
+    rootDirectory frontend/ +  frontend/.next  ->  frontend/frontend/.next  cannot exist
 
-Clear the field and redeploy. Nothing in the repository needs changing — `vercel.json`
-is already written for an empty Root Directory, and this file is not read by Vercel,
-which is why it is stated here rather than only there.
+[`vercel.json`](vercel.json) now declares `"rootDirectory": "."`, which overrides the UI
+field. Redeploying after a pull of that file is enough; clearing the field is not required,
+though it will stop the UI showing something that does not apply.
 
 ## What is worth checking afterwards
 

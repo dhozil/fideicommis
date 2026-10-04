@@ -89,6 +89,32 @@ else:
         check(f"workspace '{workspace}' exists", pathlib.Path(workspace).is_dir())
 
 print()
+print("=== the Root Directory is pinned here, not left to the UI ===")
+# Vercel resolves `outputDirectory` relative to the *Root Directory*, not the repository
+# root, so a Root Directory of `frontend/` makes `frontend/.next` resolve to
+# `frontend/frontend/.next` — a path that cannot exist, reported as a missing build.
+#
+# That setting lives in the Vercel UI, which is why it survived a push: the repository
+# says nothing, and a page load of documentation cannot change it. Vercel reads
+# `rootDirectory` from vercel.json and that overrides the UI field, so the setting is
+# pinned in the file the platform actually reads.
+#
+# The cost of that is worth stating rather than hiding: declaring it here means the UI
+# field is misleading if someone edits it, because the file wins. That is the right way
+# round — a setting that cannot drift beats a setting that can.
+declared = vercel.get("rootDirectory")
+check(
+    "rootDirectory is declared in vercel.json",
+    declared is not None,
+    str(declared) if declared is not None else "absent, so the UI field decides",
+)
+check(
+    "and it is the repository root",
+    declared in (".", "./", ""),
+    f"rootDirectory={declared!r}",
+)
+
+print()
 print("=== outputDirectory is where the build writes ===")
 out = vercel.get("outputDirectory", ".next")
 check(
@@ -102,36 +128,26 @@ check(
     "BUILD_ID present" if pathlib.Path(out, "BUILD_ID").exists() else "no BUILD_ID — run the build first",
 )
 
-# The one thing this file cannot check, because it lives in the Vercel UI rather than in
-# the repository: the project's Root Directory setting.
-#
-# `outputDirectory` is resolved *relative to* the Root Directory, not to the repository
-# root. So the two settings have to agree, and the failure when they do not is a doubled
-# path rather than a missing one:
-#
-#     Root Directory = frontend/   +   outputDirectory = frontend/.next
-#     resolves to    frontend/frontend/.next      ← does not exist, and cannot
-#
-# This repository's vercel.json is written for Root Directory = the repository root, which
-# is also what VERCEL.md instructs and what CI can verify. A deployment that sets the Root
-# Directory to `frontend/` gets this exact error, and nothing in the repository can prevent
-# it — Vercel does not read VERCEL.md.
-#
-# So it is stated as loudly as this file can state it, and the two shapes are printed so a
-# reader who has this error can match it against what they set.
-root = pathlib.Path(out)
-doubled = root.parent / out
+# Resolved the way Vercel does, against the declared root, so the check itself cannot
+# drift from the platform's rule.
+base = pathlib.Path(declared if declared else ".")
+resolved = (base / out).as_posix().lstrip("./")
 check(
-    "the path is not doubled",
-    not doubled.exists(),
-    f"{out} — setting Root Directory to frontend/ makes this resolve to frontend/{out}",
+    "the resolved path exists",
+    pathlib.Path(resolved, "BUILD_ID").exists(),
+    f"rootDirectory {declared!r} + {out} -> {resolved}",
 )
+check(
+    "and is not doubled",
+    not pathlib.Path(base, out, out).exists(),
+    f"would be {base.as_posix()}/{out}/{out}",
+)
+
 print()
-print("  Vercel resolves outputDirectory relative to the Root Directory, not the repo root:")
-print("    Root Directory = (empty)    ->  " + out + "            correct")
-print("    Root Directory = frontend/  ->  frontend/" + out + "  does not exist")
-print("  If the build fails with a path ending in frontend/frontend/.next, the Root")
-print("  Directory is set to frontend/ in the Vercel UI and has to be cleared.")
+print(f"  Vercel resolves outputDirectory relative to rootDirectory, not the repo root:")
+print(f"    rootDirectory .        +  {out}  ->  {out}   correct")
+print(f"    rootDirectory frontend/ + {out}  ->  frontend/{out}  cannot exist")
+print("  rootDirectory is pinned above so the second case cannot be reached by accident.")
 
 print()
 print("=== framework matches the dependency ===")
