@@ -327,6 +327,14 @@ jobs:
       - name: every GenVM runner asset URL resolves
         run: python check_runner_asset.py
 
+      # Every commit, and the next one, belongs to the repository owner. The authorship of
+      # 30 commits was rewritten once and the git identity was never changed, so every
+      # commit afterwards went back to a bot — and the contributors API stayed green
+      # throughout, because it only counts what is already published. This asserts the
+      # config, which is what stamps the next commit and is not in history at all.
+      - name: every commit attributes to the repository owner
+        run: python check_git_identity.py
+
       - name: the documents agree with the contract
         run: python check_docs.py
 
