@@ -27,9 +27,21 @@ export async function GET() {
 
   return NextResponse.json({
     app: "fideicommis-web",
-    readOnly: true,
+    // Three separate claims, because they are three separate things and one word cannot
+    // carry all of them.
+    //
+    // `readOnly: true` was here from before the write path existed and has been false
+    // since: a connected wallet can propose, vote and cast. `signs: false` is still
+    // true and is the one that matters — this site cannot originate a signature,
+    // because it holds no key. `holdsKeys` is true for the same reason.
+    //
+    // What replaced the blanket "read-only" is not a softer claim, it is a sharper one:
+    // the site has a write path and no custody. `canWrite` says the first, `signs` says
+    // the second.
+    canWrite: true,
     signs: false,
     holdsKeys: false,
+    signing: "the connected wallet, with the user approving each transaction",
     // The same variable the reader itself features, read through the registry rather
     // than a second literal. It used to be named NEXT_PUBLIC_EXAMPLE_TRUST with its own
     // fallback to a different address than the one the site features, so a health check

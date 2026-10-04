@@ -56,10 +56,12 @@ export default async function VerifyPage({
           Every figure here is one call away from you.
         </h1>
         <p className="lede" style={{ marginTop: 18 }}>
-          This reader has one claim about itself: it holds no key, signs nothing, and
-          every number it shows comes from a <code>get_*</code> method on the contract
-          itself. That claim is only worth something if you can reproduce the numbers.
-          Below is the complete call surface, and what each call returned just now.
+          This reader has one claim about itself: it holds no key, it cannot sign on
+          its own, and every number it shows comes from a <code>get_*</code> method on
+          the contract itself. Connecting a wallet is how a write gets signed, and that
+          happens in the wallet with your approval — but it cannot originate one. That
+          claim is only worth something if you can reproduce the numbers. Below is the
+          complete call surface, and what each call returned just now.
         </p>
       </section>
 

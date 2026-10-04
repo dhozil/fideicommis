@@ -2,11 +2,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { WalletPanel } from "@/components/WalletPanel";
 
 /**
  * The wordmark carries a small seal glyph. It is the one piece of ornament in the
  * reader, and it earns its place because a trust is a sealed instrument and this
  * page is a reader for one. Nothing else on the site is decorated.
+ *
+ * The same glyph is the site's favicon, drawn once in `app/icon.svg`. Two copies of a
+ * mark is how they drift apart, and a favicon is exactly the kind of thing that gets
+ * redrawn by hand and ends up a different shape from the header.
  */
 
 function Seal() {
@@ -57,8 +62,15 @@ export function SiteHeader() {
         </Link>
         {/* The network is stated in the chrome, on every page, because every figure
             on this site came from that one node and a reader should never have to go
-            looking for where. */}
-        <span className="seal site-net">Studionet · read-only</span>
+            looking for where.
+
+            It used to read "Studionet · read-only", and the second half had stopped being
+            true when the write path was added: a connected wallet can propose, vote and
+            cast. What is still true, and what actually matters, is narrower — this site
+            holds no key and cannot sign by itself. Saying the broader false thing was
+            worse than saying nothing, because a reader who believed it would assume the
+            write buttons could not work. */}
+        <span className="seal site-net">Studionet</span>
         <nav className="site-nav" aria-label="Primary">
           {LINKS.map((link) => (
             <Link
@@ -70,6 +82,15 @@ export function SiteHeader() {
             </Link>
           ))}
         </nav>
+        {/* The wallet lives in the chrome rather than on the trust page, because
+            connecting is not a property of one trust. A visitor who lands on the
+            directory, reads how it works, and only then wants to connect should not
+            have to find a trust first in order to do it — and once connected, the
+            address and the disconnect control stay visible on every page rather than
+            scrolling away with the record. */}
+        <div className="topbar-wallet">
+          <WalletPanel compact />
+        </div>
       </div>
     </header>
   );

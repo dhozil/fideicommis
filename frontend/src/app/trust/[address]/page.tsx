@@ -2,7 +2,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AddressForm } from "@/components/AddressForm";
 import { KeeperActions } from "@/components/KeeperActions";
-import { WalletPanel } from "@/components/WalletPanel";
 import { Conservation } from "@/components/Conservation";
 import { ConstitutionGauges } from "@/components/ConstitutionGauges";
 import { DecisionList } from "@/components/Decision";
@@ -79,9 +78,9 @@ export default async function TrustPage({ params }: Params) {
             </p>
           </div>
           <div style={{ display: "grid", gap: 10, justifyItems: "end" }}>
-            <div className="wallet">
-              <WalletPanel />
-            </div>
+            {/* The wallet now lives in the header, on every page, because connecting is
+                not a property of one trust. This slot keeps the seal, which is about
+                *this* trust: whether its constitution view and state view agree. */}
             <div className="seal">
               {consistent ? record.status : "unverified"}
               {consistent ? ` · cycle ${record.cycle}` : ""}

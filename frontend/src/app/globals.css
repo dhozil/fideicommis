@@ -313,6 +313,122 @@ main {
   display: flex;
 }
 
+/* The wallet, in the header.
+ *
+ * The header is a fixed 66px strip, so the compact form is a summary line rather than
+ * a card: a card there would make the header jump in height the moment a wallet
+ * connects, which moves the nav under the pointer of anyone who was reaching for it.
+ * `.topbar-wallet` is not `position: absolute` for the same reason — a dropdown on top
+ * of the nav would overlap the links rather than push them.
+ */
+.topbar-wallet {
+  margin-left: auto;
+  position: relative;
+  flex: 0 0 auto;
+}
+
+/* The network seal and the wallet share one auto margin, so the wallet needs to undo
+   the double gap: with both present the strip would grow by an extra 24px. */
+.topbar-wallet + .site-net,
+.site-net + .topbar-wallet {
+  margin-left: 0;
+}
+
+.wallet.is-compact {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+}
+
+.wallet-connect {
+  padding: 7px 13px;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.wallet-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wallet-address {
+  font-family: var(--data);
+  font-size: 0.76rem;
+  padding: 6px 10px;
+  background: var(--raised);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  color: var(--ink);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.wallet-address:hover {
+  border-color: var(--brass);
+}
+
+.wallet-disconnect {
+  padding: 6px 10px;
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+/* The account detail, on demand. Absolutely positioned so revealing it does not change
+   the height of the strip, which is the whole point of the compact form. */
+.wallet-detail {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 30;
+  width: 300px;
+  padding: 14px;
+  background: var(--raised);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
+}
+
+.wallet-error {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 30;
+  width: 300px;
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 0.78rem;
+  color: var(--breach);
+  background: var(--raised);
+  border: 1px solid var(--breach-dim);
+  border-radius: var(--radius);
+}
+
+@media (max-width: 860px) {
+  .topbar-wallet {
+    order: 3;
+    width: 100%;
+    margin-left: 0;
+    padding: 0 0 12px;
+  }
+
+  .site-net {
+    margin-left: auto;
+  }
+
+  .wallet.is-compact {
+    justify-content: flex-start;
+  }
+
+  .wallet-detail,
+  .wallet-error {
+    left: 0;
+    right: auto;
+    width: min(300px, 100%);
+  }
+}
+
 .site-net {
   margin-left: auto;
 }
@@ -412,7 +528,10 @@ main {
   max-width: 62ch;
 }
 
-.colophon .read-only {
+/* Renamed from .read-only: the class outlived the claim it described. A grep for
+   read-only now returns this file for a badge that says Holds no key, which is the
+   kind of stale word that makes the next person hesitate before changing a real one. */
+.colophon .no-custody {
   font-family: var(--data);
   font-size: 0.66rem;
   letter-spacing: 0.16em;

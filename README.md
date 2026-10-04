@@ -253,8 +253,13 @@ the classes was never available.
 A trust that cannot explain a decision cannot be audited. `frontend/` is that audit record,
 and its strongest claim is a negative one:
 
-> It signs nothing, holds no key, and every figure it shows is a call to the trust's
-> own `get_*` method.
+> It holds no key, it cannot sign on its own, and every figure it shows is a call to the
+> trust's own `get_*` method.
+
+Connecting a wallet is how a transaction gets signed, and that happens in the wallet with
+your approval, one transaction at a time. So the reader has a write path and no custody —
+which is a narrower and more useful claim than "read-only", a label that was true when the
+reader had no write path and stopped being true when it gained one.
 
 So any claim on any page can be checked by making the same call yourself — and
 [`/verify`](frontend/src/app/verify/page.tsx) exists to make that literally true. It lists

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!--
+    The seal from the header, redrawn for 32px rather than scaled from 20.
+
+    A favicon is the one mark on this site that gets seen at the smallest size there is,
+    and at 16px in a tab the ledger's spine and the gap between its two leaves are the
+    only parts that survive. So the outer ring is dropped and the leaves are thickened:
+    a 1px stroke on a 20px glyph is 0.5px here and disappears, while 2.4 at this size
+    lands near 1.2 — a line the renderer can actually hold.
+
+    Same shape as the header, drawn separately rather than scaled, because that is the
+    only way two copies of a mark stop drifting.
+  -->
+  <rect width="32" height="32" rx="6" fill="#0a1114"/>
+  <g fill="none" stroke="#c8b273" stroke-width="2.4" stroke-linejoin="round">
+    <path d="M16 7.6v16.8"/>
+    <path d="M16 7.6C13.7 6.1 11 5.8 7.8 6.4v16.8c3.2-.6 5.9-.2 8.2 1.4 2.3-1.6 5-2 8.2-1.4V6.4c-3.2-.6-5.9-.2-8.2 1.2z"/>
+  </g>
+</svg>

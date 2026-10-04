@@ -6,78 +6,152 @@ import { shortAddress } from "@/lib/explorer";
 import { WalletChooser } from "@/components/WalletChooser";
 
 /**
- * Connecting a wallet.
+ * Connecting a wallet, in the chrome of every page.
  *
- * The button opens a list of the wallets this browser has, discovered over EIP-6963,
- * rather than connecting on click. That is deliberate: `window.ethereum` is a single
- * slot that several wallets write to, so an app that reads it connects whichever one
- * injected last. Asking first is what makes the choice the user's.
+ * It lives in the header rather than on the trust page because connecting is not a
+ * property of one trust. Someone who lands on the directory, reads how it works and
+ * only then decides to act should not have to find a trust first in order to connect —
+ * and once connected, the address and the disconnect control stay put instead of
+ * scrolling away with the record they were reading.
+ *
+ * `compact` is the header variant: one line, no panel chrome, because the header is
+ * 64px tall and a card there would push the nav around as it changes between connected
+ * and not. The full panel still exists for the trust page, where there is room for the
+ * figures and the actions.
  *
  * The failure states are the ones that actually happen, and none of them is "something
  * went wrong": no wallet installed, discovery still running, the user cancelled, the
  * wallet is locked, the wrong chain, or a network their wallet has never heard of.
  */
-export function WalletPanel() {
+export function WalletPanel({ compact = false }: { compact?: boolean }) {
   const wallet = useWallet();
   const [choosing, setChoosing] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [open, setOpen] = useState(false);
 
+  // The compact form is a summary line rather than a card, and it reveals the full
+  // account detail on demand so the header does not grow a paragraph when connected.
   useEffect(() => {
-    if (!copied) return;
-    const timer = setTimeout(() => setCopied(false), 1800);
-    return () => clearTimeout(timer);
-  }, [copied]);
+    if (!open) return;
+    const close = () => setOpen(false);
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [open]);
+
+  const summary = wallet.settling
+    ? "Looking…"
+    : wallet.address
+      ? shortAddress(wallet.address)
+      : wallet.wallets.length
+        ? `${wallet.wallets.length} wallet${wallet.wallets.length === 1 ? "" : "s"}`
+        : "No wallet";
 
   return (
-    <div className="panel" style={{ padding: 14, minWidth: 250 }}>
+    <div className={`wallet${compact ? " is-compact" : ""}`}>
       {!wallet.address ? (
         <>
-          <span className="eyebrow" style={{ marginBottom: 8 }}>
-            Act on a trust
-          </span>
-          <button type="button" onClick={() => setChoosing(true)} disabled={wallet.busy}>
-            Connect wallet
-          </button>
-          <p className="faint" style={{ fontSize: "0.78rem", margin: "10px 0 0" }}>
-            {wallet.settling
-              ? "Looking for installed wallets…"
-              : wallet.wallets.length
-                ? `${wallet.wallets.length} wallet${wallet.wallets.length === 1 ? "" : "s"} available — you pick which one.`
-                : "No wallet detected. This page reads without one."}
-          </p>
+          {compact ? (
+            <button
+              type="button"
+              className="wallet-connect"
+              onClick={() => setChoosing(true)}
+              disabled={wallet.busy}
+            >
+              {wallet.busy ? "Wait…" : "Connect wallet"}
+            </button>
+          ) : (
+            <>
+              <span className="eyebrow" style={{ marginBottom: 8 }}>
+                Act on a trust
+              </span>
+              <button type="button" onClick={() => setChoosing(true)} disabled={wallet.busy}>
+                Connect wallet
+              </button>
+              <p className="faint" style={{ fontSize: "0.78rem", margin: "10px 0 0" }}>
+                {wallet.settling
+                  ? "Looking for installed wallets…"
+                  : wallet.wallets.length
+                    ? `${wallet.wallets.length} wallet${wallet.wallets.length === 1 ? "" : "s"} available — you pick which one.`
+                    : "No wallet detected. This page reads without one."}
+              </p>
+            </>
+          )}
         </>
       ) : (
         <>
-          <span className="eyebrow" style={{ marginBottom: 6 }}>
-            Connected
-          </span>
-          <p
-            className="data"
-            style={{ margin: "0 0 10px", fontSize: "0.82rem", wordBreak: "break-all" }}
-          >
-            {shortAddress(wallet.address)}
-          </p>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {!wallet.onStudionet ? (
-              <button type="button" onClick={() => wallet.switchNetwork()} disabled={wallet.busy}>
-                {wallet.busy ? "Switching…" : "Switch to Studionet"}
+          {compact ? (
+            <div className="wallet-summary">
+              <button
+                type="button"
+                className="wallet-address"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setOpen((value) => !value);
+                }}
+                aria-expanded={open}
+                title={wallet.address}
+              >
+                {summary}
               </button>
-            ) : (
-              <span className="seal" style={{ color: "var(--verified)" }}>
-                Studionet
+              <button
+                type="button"
+                className="wallet-disconnect"
+                onClick={() => wallet.disconnect()}
+                disabled={wallet.busy}
+              >
+                Disconnect
+              </button>
+            </div>
+          ) : (
+            <>
+              <span className="eyebrow" style={{ marginBottom: 6 }}>
+                Connected
               </span>
-            )}
-            <button type="button" onClick={wallet.disconnect} disabled={wallet.busy}>
-              Disconnect
-            </button>
-          </div>
-          {copied ? (
-            <p className="faint" style={{ fontSize: "0.78rem", margin: "10px 0 0" }}>
-              Address copied.
-            </p>
-          ) : null}
+              <p
+                className="data"
+                style={{ margin: "0 0 10px", fontSize: "0.82rem", wordBreak: "break-all" }}
+              >
+                {wallet.address}
+              </p>
+              {!wallet.onStudionet ? (
+                <button type="button" onClick={() => wallet.switchNetwork()} disabled={wallet.busy}>
+                  {wallet.busy ? "Switching…" : "Switch to Studionet"}
+                </button>
+              ) : (
+                <span className="seal" style={{ color: "var(--verified)" }}>
+                  Studionet
+                </span>
+              )}
+              <div style={{ marginTop: 8 }}>
+                <button type="button" onClick={wallet.disconnect} disabled={wallet.busy}>
+                  Disconnect
+                </button>
+              </div>
+            </>
+          )}
         </>
       )}
+
+      {/* The expanded account detail, on demand rather than always, so a connected
+          reader does not carry a card in the header on every page. */}
+      {compact && open && wallet.address ? (
+        <div className="wallet-detail" onClick={(event) => event.stopPropagation()}>
+          <span className="eyebrow" style={{ marginBottom: 6 }}>
+            {wallet.wallets.find((w) => w.id === wallet.selected)?.name ?? "Wallet"}
+          </span>
+          <p className="data" style={{ margin: "0 0 10px", fontSize: "0.8rem", wordBreak: "break-all" }}>
+            {wallet.address}
+          </p>
+          {!wallet.onStudionet ? (
+            <button type="button" onClick={() => wallet.switchNetwork()} disabled={wallet.busy}>
+              {wallet.busy ? "Switching…" : "Switch to Studionet"}
+            </button>
+          ) : (
+            <span className="seal" style={{ color: "var(--verified)" }}>
+              Studionet
+            </span>
+          )}
+        </div>
+      ) : null}
 
       {choosing ? (
         <WalletChooser
@@ -95,15 +169,7 @@ export function WalletPanel() {
       ) : null}
 
       {wallet.error ? (
-        <p
-          role="alert"
-          style={{
-            margin: "12px 0 0",
-            fontSize: "0.82rem",
-            color: "var(--breach)",
-            maxWidth: "none",
-          }}
-        >
+        <p className="wallet-error" role="alert">
           {wallet.error}
         </p>
       ) : null}

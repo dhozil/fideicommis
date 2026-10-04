@@ -16,7 +16,7 @@ export default function NotFound() {
           <span className="eyebrow">Fideicommis</span>
           <h1>Nothing answered at that address</h1>
         </div>
-        <div className="right">Studionet · read-only</div>
+        <div className="right">Studionet</div>
       </header>
 
       <main id="main">
