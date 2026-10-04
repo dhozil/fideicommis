@@ -114,8 +114,20 @@ export interface TrustRecord {
   address: string;
   name: string;
   status: string;
+  /** What `get_status` itself says. Kept so the page can compare it with the summary. */
+  statusView: string;
   cycle: string;
   treasury: string;
+  /** What `get_treasury` itself says. Kept so the page can compare it with the summary. */
+  treasuryView: string;
+  /** The mission as declared at genesis, in the contract's own words. */
+  mission: string;
+  /** The charter texts that preceded this one, oldest first. */
+  charterHistory: string[];
+  /** The sources the committee is allowed to consult. */
+  evidenceUrls: string[];
+  /** Updates to the mission, in order. */
+  missionLog: string[];
   runway: string;
   nextTickAt: string;
   lastAction: string;

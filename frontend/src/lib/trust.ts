@@ -79,18 +79,23 @@ export async function readTrust(address: string): Promise<TrustRecord> {
   const startedAt = Date.now();
   const degraded: string[] = [];
 
-  // All ten fixed views in one request, and get_org_summary is first among them
-  // because it is both the proof of life and the source of most of what the page
-  // shows. It used to be read on its own first and the other nine after it, which
-  // cost a second round trip for every page view in order to make a bad address fail
-  // cheaply. Batched, a wrong address still produces a 404, and a right one saves a
-  // request: the wasted reads on a bad address are nine calls inside a batch that was
-  // going to cost a request anyway.
+  // Sixteen fixed views in one batched read, and get_org_summary is first among them
+  // because it is both the proof of life and the source of most of what the page shows.
+  // It used to be read on its own first and the other nine after it, which cost a second
+  // round trip for every page view in order to make a bad address fail cheaply. Batched,
+  // a wrong address still produces a 404, and a right one saves a request: the wasted
+  // reads on a bad address are calls inside a batch that was going to cost a request
+  // anyway.
   //
-  // The summary also answers the name, status, cycle, treasury, runway, last action
-  // and charter version. Those were seven separate read calls, which was seven calls
-  // spent re-reading data the summary already carried. The fixed read count went from
-  // seventeen to ten, and nothing on the page lost a field.
+  // The summary also answers the name, cycle, treasury, runway, last action and charter
+  // version. Those were separate reads, which was calls spent re-reading data the
+  // summary already carried — except for three that it does *not* carry. The status, the
+  // raw treasury and the mission live behind their own views too, and this reader used to
+  // assert nothing about them by simply never calling them. So `get_status`,
+  // `get_treasury` and `get_mission` are read outright rather than assumed from the
+  // summary, and the three that the contract keeps separately — `get_charter_history`
+  // (which charter texts preceded this one), `get_evidence_urls` (what the committee is
+  // allowed to see), and `get_mission_log` — come along in the same batch.
   const FIXED: { method: string; args?: unknown[] }[] = [
     { method: "get_org_summary" },
     { method: "get_next_tick_at" },
@@ -102,6 +107,12 @@ export async function readTrust(address: string): Promise<TrustRecord> {
     { method: "get_charter_rules" },
     { method: "get_charter" },
     { method: "get_proposal_ids" },
+    { method: "get_status" },
+    { method: "get_treasury" },
+    { method: "get_mission" },
+    { method: "get_charter_history" },
+    { method: "get_evidence_urls" },
+    { method: "get_mission_log" },
   ];
 
   const answers = await readMany(addr, FIXED);
@@ -139,6 +150,36 @@ export async function readTrust(address: string): Promise<TrustRecord> {
   const charterRaw = answers[8];
   const charter = charterRaw === null || charterRaw === undefined ? "" : String(charterRaw);
   const ids = keep<string[]>(9, "get_proposal_ids", []);
+
+  // Six views the reader used to skip. Each is kept the way the page consumes it:
+  // `status` and `treasury` plain because they are displayed verbatim, and the three
+  // JSON-shaped ones parsed into lists — with a degraded entry rather than an exception
+  // when the contract answers something unexpected, so one malformed view cannot take
+  // down the whole record.
+  const statusRaw = answers[10];
+  const status = statusRaw === null || statusRaw === undefined ? "" : String(statusRaw);
+  const treasuryRaw = answers[11];
+  const treasury = treasuryRaw === null || treasuryRaw === undefined ? "" : String(treasuryRaw);
+  const missionRaw = answers[12];
+  const mission = missionRaw === null || missionRaw === undefined ? "" : String(missionRaw);
+
+  const decodeList = (index: number, method: string): string[] => {
+    const raw = answers[index];
+    if (raw === null || raw === undefined) return [];
+    try {
+      const parsed = parseView<unknown>(raw, method);
+      if (Array.isArray(parsed)) return parsed.map(String);
+      if (typeof parsed === "string") return parsed ? [parsed] : [];
+      return [];
+    } catch (err) {
+      degraded.push(`${method}: ${(err as Error).message.slice(0, 90)}`);
+      return [];
+    }
+  };
+
+  const charterHistory = decodeList(13, "get_charter_history");
+  const evidenceUrls = decodeList(14, "get_evidence_urls");
+  const missionLog = decodeList(15, "get_mission_log");
 
   // Newest first: an auditor opening a trust is asking what it did lately, and the
   // cap then falls on the oldest records rather than the recent ones.
@@ -194,9 +235,18 @@ export async function readTrust(address: string): Promise<TrustRecord> {
   return {
     address: addr,
     name: String(summary.name),
-    status: String(summary.status ?? ""),
+    // `summary.status` is what the contract aggregates; the direct view is kept beside
+    // it on the page, so the two can be compared. They must agree, and a reader that
+    // shows only one of them cannot tell when they do not.
+    status: status || String(summary.status ?? ""),
+    statusView: status,
     cycle: String(summary.cycle ?? ""),
-    treasury: String(summary.treasury_atto ?? "0"),
+    treasury: treasury || String(summary.treasury_atto ?? "0"),
+    treasuryView: treasury,
+    mission,
+    charterHistory,
+    evidenceUrls,
+    missionLog,
     runway: String(summary.runway_cycles ?? "0"),
     nextTickAt,
     lastAction: String(summary.last_action ?? ""),

@@ -7,6 +7,8 @@ import { Conservation } from "@/components/Conservation";
 import { ConstitutionGauges } from "@/components/ConstitutionGauges";
 import { DecisionList } from "@/components/Decision";
 import { Charter, ConstitutionFacts, Membership, Rulebook } from "@/components/Panels";
+import { Mission, Provenance } from "@/components/Provenance";
+import { RulesPanel } from "@/components/RulesActions";
 import { gen, utc } from "@/lib/format";
 import { NotATrust, readTrust } from "@/lib/trust";
 import { addressOnExplorer } from "@/lib/explorer";
@@ -140,6 +142,14 @@ export default async function TrustPage({ params }: Params) {
             />
           </div>
           <div className="panel">
+            <h3>Rulebook & policy</h3>
+            <RulesPanel
+              trust={record.address}
+              hasRules={record.rules.length > 0}
+              policy={record.policy}
+            />
+          </div>
+          <div className="panel">
             <h3>Membership</h3>
             <Membership
               members={record.members}
@@ -154,6 +164,25 @@ export default async function TrustPage({ params }: Params) {
           <div className="panel">
             <h3>Charter</h3>
             <Charter charter={record.charter} version={record.charterVersion} />
+          </div>
+
+          <div className="panel">
+            <h3>Mission</h3>
+            <Mission mission={record.mission} missionLog={record.missionLog} />
+          </div>
+
+          <div className="panel">
+            <h3>Provenance</h3>
+            <Provenance
+              address={record.address}
+              status={record.status}
+              statusView={record.statusView}
+              treasury={record.treasury}
+              treasuryView={record.treasuryView}
+              charterVersion={record.charterVersion}
+              charterHistory={record.charterHistory}
+              evidenceUrls={record.evidenceUrls}
+            />
           </div>
         </aside>
 
@@ -181,6 +210,7 @@ export default async function TrustPage({ params }: Params) {
             state={record.state}
             members={record.members}
             trust={record.address}
+            hasRules={record.rules.length > 0}
           />
         </section>
       </div>

@@ -134,12 +134,15 @@ export default async function VerifyPage({
 
           <section style={{ marginTop: 28 }}>
             <h3 style={{ marginBottom: 10 }}>
-              {report.rows.length} methods, one request
+              {report.rows.length} methods, in the same single request the reader makes
             </h3>
             <p className="muted" style={{ fontSize: "0.9rem" }}>
-              These were all called together. The millisecond figures are what a page
-              load actually costs, which is why the reader batches rather than pacing
-              calls one at a time.
+              These are called together, batched, and shown with what each one answered.
+              The millisecond figures are what a page load actually costs. Eighteen were
+              twelve until the mission, the status, the charter history, the evidence
+              sources and the mission log were given panels of their own — those six
+              methods answered on every read and nothing showed them, so the call
+              surface this page claimed was complete was not.
             </p>
 
             <div style={{ overflowX: "auto" }}>

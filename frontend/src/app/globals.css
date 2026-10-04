@@ -647,6 +647,43 @@ main {
   border-color: var(--brass);
 }
 
+/* The proposal body is the one multi-line input on the site, and shares the field
+   styles rather than inventing its own. A textarea that looks different from every
+   other input on the same form is a form that looks unfinished. */
+.field textarea {
+  flex: 1 1 340px;
+  min-width: 0;
+  background: var(--sunken);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font-family: var(--prose);
+  font-size: 0.86rem;
+  line-height: 1.5;
+  padding: 11px 13px;
+  resize: vertical;
+}
+
+.field textarea::placeholder {
+  color: var(--ink-faint);
+}
+
+.field textarea:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 1px;
+  border-color: var(--brass);
+}
+
+/* A write that would damage the trust reads as dangerous, so a reject is not just a
+   second primary button. The danger tone lives on the button rather than on the whole
+   panel, because only the act is dangerous — approving the same proposal right next to
+   it is not. */
+button.danger,
+.btn.danger {
+  border-color: var(--breach-dim);
+  color: var(--breach);
+}
+
 button,
 .btn {
   background: var(--raised);
@@ -1487,6 +1524,61 @@ th.num {
   border-color: var(--brass);
   color: var(--brass);
   background: color-mix(in srgb, var(--brass) 10%, transparent);
+}
+
+/* The mission, the charter history and the evidence sources.
+ *
+ * Each of these is a list the contract already answered and nothing displayed. The two
+ * lists share one shape because they share one meaning: things the trust said about
+ * itself, in order, shown oldest-first. A versioned list that reverses itself is a list
+ * whose numbering lies about which entry came first.
+ */
+.log-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.log-list li {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  font-size: 0.86rem;
+  color: var(--ink-dim);
+}
+
+.log-list .num {
+  flex: 0 0 auto;
+  font-family: var(--data);
+  font-size: 0.72rem;
+  color: var(--ink-faint);
+  min-width: 28px;
+}
+
+/* Key facts with their values, for the provenance panel. A definition list rather than
+   a table, because these are not figures to compare — they are statements to check. */
+.kv {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 14px;
+  font-size: 0.86rem;
+}
+
+.kv dt {
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  align-self: baseline;
+}
+
+.kv dd {
+  margin: 0;
+  color: var(--ink-dim);
 }
 
 /* The wallet chooser.

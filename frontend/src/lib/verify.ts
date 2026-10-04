@@ -55,6 +55,14 @@ const INVENTORY: { method: string; used: string; shows: string }[] = [
   { method: "get_proposal_ids", used: "which proposals exist, in order", shows: "the decision list" },
   { method: "get_proposal", used: "one proposal: amount, recipient, votes, verdict", shows: "each decision" },
   { method: "get_proposal_audit", used: "the committee's stated reasoning", shows: "each decision" },
+  // Six views the reader used to skip, because the call surface it claimed was complete
+  // was not. Each now has a panel that shows it, so each is listed.
+  { method: "get_status", used: "the status, straight from its own view", shows: "provenance" },
+  { method: "get_treasury", used: "the treasury, straight from its own view", shows: "provenance" },
+  { method: "get_mission", used: "the declared purpose, in the contract's own words", shows: "mission" },
+  { method: "get_charter_history", used: "every charter text that preceded this one", shows: "provenance" },
+  { method: "get_evidence_urls", used: "what the committee is allowed to consult", shows: "provenance" },
+  { method: "get_mission_log", used: "every update to the mission, in order", shows: "mission" },
 ];
 
 /** A short raw answer, clipped. Enough to recognise, not enough to fill a page. */
