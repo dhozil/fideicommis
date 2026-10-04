@@ -335,6 +335,15 @@ jobs:
       - name: an unreadable view shows as unreadable, not as a crash
         run: npx --yes tsx@4 tests/check_degraded_panels.mts
 
+      # The trust page used to await the chain in the server component, so the first byte of
+      # HTML waited for fifteen view calls. No amount of tuning underneath that helps: a page
+      # whose bytes cannot be written until every read returns cannot be made to paint
+      # sooner. The fix was structural — a shell that paints, and a record fetched after —
+      # and a structural fix is easy to undo by accident with nothing failing but a slower
+      # page. The reader is noindex, so giving up server rendering cost nothing in use.
+      - name: the chain is not in the path to a first paint
+        run: npx --yes tsx@4 tests/check_render_path.mts
+
       # Negative caching is the one change here that could make the reader lie: a
       # remembered "this node has no record of it", replayed after the transaction
       # settled, would report an absence for something real. Three ways that could go

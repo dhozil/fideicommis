@@ -117,9 +117,19 @@ console.log("=== the substitute is never a number the contract did not state ===
 console.log();
 console.log("=== the page already told the reader, and the panels now agree with it ===");
 {
-  const page = readFileSync(join(here, "..", "frontend", "src", "app", "trust", "[address]", "page.tsx"), "utf-8");
-  check("the degraded notice names the failed views", /Some views could not be read/.test(page));
-  check("and says they are shown empty rather than guessed", /shown empty rather\s+than\s+guessed/.test(page));
+  // This notice moved out of page.tsx when the record stopped being server-rendered: the
+  // degraded list is part of the fetched record, so it is rendered by the component that
+  // receives it. The check followed it there, which is the check working — it fails when the
+  // wording moves without this being updated, which is a sentence worth re-reading.
+  const view = readFileSync(
+    join(here, "..", "frontend", "src", "components", "TrustRecordView.tsx"),
+    "utf-8",
+  );
+  check("the degraded notice names the failed views", /Some views could not be read/.test(view));
+  check(
+    "and says they are shown empty rather than guessed",
+    /shown empty rather than\s+guessed/.test(view),
+  );
 }
 
 console.log();

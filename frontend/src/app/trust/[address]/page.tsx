@@ -1,219 +1,52 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { AddressForm } from "@/components/AddressForm";
-import { TrustWrites } from "@/components/TrustWrites";
-import { ProposalComposer } from "@/components/ProposalActions";
-import { Conservation } from "@/components/Conservation";
-import { ConstitutionGauges } from "@/components/ConstitutionGauges";
-import { DecisionList } from "@/components/Decision";
-import { Charter, ConstitutionFacts, Membership, Rulebook } from "@/components/Panels";
-import { Mission, Provenance } from "@/components/Provenance";
-import { RulesPanel } from "@/components/RulesActions";
-import { gen, utc } from "@/lib/format";
-import { NotATrust, readTrust } from "@/lib/trust";
-import { addressOnExplorer } from "@/lib/explorer";
+import { TrustRecordView } from "@/components/TrustRecordView";
 import { isListed } from "@/lib/registry";
 
-// The record is a snapshot of a live chain, so it should not be baked into a build.
-export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
-
-type Params = { params: Promise<{ address: string }> };
-
 /**
- * The audit record.
+ * The trust page: a shell that paints immediately, and a record that arrives after.
  *
- * Three things are load-bearing about how this page behaves when something is
- * wrong, and all three existed before the rest of the design did:
+ * This used to `await readTrust()` in the page, so the first byte of HTML waited for
+ * fifteen view calls against a node that takes seconds to answer. On the deployed reader
+ * that was the whole of the wait, and no amount of tuning the concurrency underneath it
+ * helped, because the page was structurally blocked on the chain: the bytes could not be
+ * written until every read had come back.
  *
- * 1. A disagreement between the constitution view and the state view means the
- *    bytecode is not what the reader expects. That is stated at the top in plain
- *    words, and the rest of the page is marked as not meaningful, rather than
- *    leaving figures to be read as if they meant something.
- * 2. A view that fails is shown as empty and named. A trust that has not derived
- *    its rulebook yet is a normal state, not a broken reader.
- * 3. The proposals shown are capped, and the page says how many it left out and
- *    where the full list is. A reader that quietly shows a truncated record is
- *    indistinguishable from one that has nothing to hide.
+ * Two things made that worth changing rather than measuring again:
+ *
+ *   - The reader is `noindex` by choice (`layout.tsx`), so the main thing server rendering
+ *     buys — a crawlable page with the data in the HTML — is already deliberately forgone.
+ *   - What remained was a fast first paint with data, which is the one thing this
+ *     architecture could not deliver.
+ *
+ * So the chain is out of the request path. This component renders the masthead, the
+ * address and the navigation from the URL alone, with nothing awaited; `TrustRecordView`
+ * fetches `/api/trust/[address]` in the browser and renders the panels when it lands. The
+ * first paint no longer waits on a node at all.
+ *
+ * The reads still happen on the server, in that route. They are not moved into the browser
+ * — see the note on `app/api/trust/[address]/route.ts` for why that matters.
  */
-export default async function TrustPage({ params }: Params) {
+export default async function TrustPage({ params }: { params: Promise<{ address: string }> }) {
   const { address } = await params;
   const decoded = decodeURIComponent(address);
-
-  let record;
-  try {
-    record = await readTrust(decoded);
-  } catch (err) {
-    if (err instanceof NotATrust) notFound();
-    throw err;
-  }
-
-  const cited = new Set(record.proposals.flatMap((p) => p.violations ?? []));
-  const consistent = record.constitutionConsistent;
 
   return (
     <main id="main">
       <section style={{ paddingTop: 30 }}>
-        <div
-          style={{
-            display: "flex",
-            gap: 20,
-            alignItems: "flex-start",
-            flexWrap: "wrap",
-          }}
-        >
-          <div style={{ flex: "1 1 320px" }}>
-            <span className="eyebrow">
-              {isListed(record.address) ? "Listed trust" : "Trust"} · Studionet
-            </span>
-            <h1 style={{ fontSize: "clamp(1.9rem, 4vw, 2.8rem)" }}>{record.name}</h1>
-            <p className="data muted wrap" style={{ marginTop: 8, marginBottom: 0 }}>
-              {record.address}
-            </p>
-            <p style={{ marginTop: 8, marginBottom: 0 }}>
-              <a
-                href={addressOnExplorer(record.address)}
-                target="_blank"
-                rel="noreferrer noopener"
-              >
-                Open on the explorer
-              </a>
-            </p>
-          </div>
-          <div style={{ display: "grid", gap: 10, justifyItems: "end" }}>
-            {/* The wallet now lives in the header, on every page, because connecting is
-                not a property of one trust. This slot keeps the seal, which is about
-                *this* trust: whether its constitution view and state view agree. */}
-            <div className="seal">
-              {consistent ? record.status : "unverified"}
-              {consistent ? ` · cycle ${record.cycle}` : ""}
-            </div>
-          </div>
-        </div>
+        <span className="eyebrow">
+          {isListed(decoded) ? "Listed trust" : "Trust"} · Studionet
+        </span>
+        {/* The trust's own name, its address and its seal all come from views, so they
+            belong to the record rather than to the shell. What is reserved here is only
+            the space they will occupy — a page that reflows when data lands moves
+            everything the reader has already looked at. No figure and no name is invented
+            to fill it. */}
+        <div className="skeleton skeleton-title" aria-hidden="true" />
+        <div className="skeleton skeleton-address" aria-hidden="true" />
       </section>
 
-      <section style={{ marginTop: 28 }}>
-        {consistent ? (
-          <div className="notice good">
-            {gen(record.treasury)} GEN held · runway {record.runway} cycles · last
-            action {record.lastAction} · next tick {utc(record.nextTickAt)}
-          </div>
-        ) : (
-          <div className="notice bad">
-            <strong>This is not the code the reader expects.</strong> The constitution
-            view and the state view disagree about the hard limits, which means the
-            deployed bytecode is not the code this reader was written against. Treat
-            every figure below as unverified and do not act on it.
-          </div>
-        )}
-
-        {record.degraded ? (
-          <div className="notice warn" style={{ marginTop: 12 }}>
-            <strong>Some views could not be read.</strong> They are shown empty rather
-            than guessed: <code className="wrap">{record.degraded}</code>
-          </div>
-        ) : null}
-      </section>
-
-      <hr className="rule" style={{ margin: "34px 0 26px" }} />
-
-      <div className="columns">
-        <aside className="stack" aria-label="The trust's standing">
-          <Conservation flow={record.flow} />
-          <div className="panel">
-            <h3>Constitution</h3>
-            <ConstitutionGauges state={record.state} />
-            <ConstitutionFacts record={record} />
-          </div>
-          <div className="panel">
-            <h3>Keeper</h3>
-            <TrustWrites
-              trust={record.address}
-              treasury={record.treasury}
-              ceilingBps={record.policy.spend_ceiling_bps}
-              maxCeilingBps={record.constitution.max_spend_ceiling_bps}
-            />
-          </div>
-          <div className="panel">
-            <h3>Propose</h3>
-            <ProposalComposer
-              trust={record.address}
-              governanceFields={record.constitution.governance_fields}
-            />
-          </div>
-          <div className="panel">
-            <h3>Rulebook & policy</h3>
-            <RulesPanel
-              trust={record.address}
-              hasRules={record.rules.length > 0}
-              policy={record.policy}
-            />
-          </div>
-          <div className="panel">
-            <h3>Membership</h3>
-            <Membership
-              members={record.members}
-              totalShares={record.state.total_shares}
-              ceiling={gen(record.policy.spend_ceiling_atto ?? "0")}
-            />
-          </div>
-          <div className="panel">
-            <h3>Rulebook</h3>
-            <Rulebook rules={record.rules} cited={cited} />
-          </div>
-          <div className="panel">
-            <h3>Charter</h3>
-            <Charter charter={record.charter} version={record.charterVersion} />
-          </div>
-
-          <div className="panel">
-            <h3>Mission</h3>
-            <Mission mission={record.mission} missionLog={record.missionLog} />
-          </div>
-
-          <div className="panel">
-            <h3>Provenance</h3>
-            <Provenance
-              address={record.address}
-              status={record.status}
-              statusView={record.statusView}
-              treasury={record.treasury}
-              treasuryView={record.treasuryView}
-              charterVersion={record.charterVersion}
-              charterHistory={record.charterHistory}
-              evidenceUrls={record.evidenceUrls}
-            />
-          </div>
-        </aside>
-
-        <section aria-label="Decisions">
-          <div
-            style={{
-              display: "flex",
-              alignItems: "baseline",
-              gap: 14,
-              flexWrap: "wrap",
-              marginBottom: 18,
-            }}
-          >
-            <h2 style={{ fontSize: "1.5rem" }}>
-              {record.proposals.length} decision
-              {record.proposals.length === 1 ? "" : "s"}
-            </h2>
-            <span className="muted" style={{ fontSize: "0.9rem" }}>
-              newest first, each with the committee&apos;s own reasoning
-            </span>
-          </div>
-          <DecisionList
-            proposals={record.proposals}
-            audits={record.audits}
-            state={record.state}
-            members={record.members}
-            trust={record.address}
-            hasRules={record.rules.length > 0}
-          />
-        </section>
-      </div>
+      <TrustRecordView address={decoded} />
 
       <section style={{ marginTop: 48 }}>
         <div className="panel">

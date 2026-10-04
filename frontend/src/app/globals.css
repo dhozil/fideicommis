@@ -1478,6 +1478,81 @@ th.num {
   }
 }
 
+/* The skeleton shown while the trust page waits for the chain.
+ *
+ * A placeholder that is not the same shape as the thing it stands in for causes a jump
+ * when the real content arrives, so the heights are fixed to roughly what each element
+ * renders at. They are deliberately a slightly different colour from every surface on the
+ * site: this is the one place the reader is told "not read yet" rather than being given a
+ * number, and a skeleton that looked like real content would be the opposite of honest.
+ *
+ * The animation is a slow pulse rather than a shimmer because a shimmer implies content
+ * arriving from somewhere; nothing is arriving, the node is being asked.
+ */
+.skeleton {
+  border-radius: var(--radius);
+  background: linear-gradient(
+    90deg,
+    var(--sunken) 0%,
+    color-mix(in srgb, var(--brass) 7%, var(--sunken)) 50%,
+    var(--sunken) 100%
+  );
+  background-size: 220% 100%;
+  animation: skeleton-pulse 1.6s ease-in-out infinite;
+}
+
+.skeleton-title {
+  height: 2.4rem;
+  width: min(22ch, 70%);
+  margin-top: 10px;
+}
+
+.skeleton-address {
+  height: 0.9rem;
+  width: min(42ch, 90%);
+  margin-top: 12px;
+}
+
+.skeleton-line {
+  height: 0.8rem;
+  width: 100%;
+  margin-top: 10px;
+}
+
+.skeleton-line.short {
+  width: 62%;
+  margin-top: 8px;
+}
+
+@keyframes skeleton-pulse {
+  0%,
+  100% {
+    background-position: 100% 0;
+    opacity: 0.55;
+  }
+  50% {
+    background-position: 0 0;
+    opacity: 0.85;
+  }
+}
+
+/* A spinner inside a sentence, rather than inside a flex row. `.spinner` is a flex item
+   where it was written, so it needs to become an inline box to sit beside text without
+   dropping to the next line. */
+.notice .spinner {
+  display: inline-block;
+  vertical-align: -1px;
+  margin-right: 8px;
+}
+
+/* Someone who cannot wait for a skeleton does not need one to be told twice. */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+    opacity: 0.7;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .spinner {
     animation: none;
