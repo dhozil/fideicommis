@@ -112,20 +112,34 @@ export function Charter({ charter, version }: { charter: string; version: string
 
 export function ConstitutionFacts({ record }: { record: TrustRecord }) {
   const constitution = record.constitution;
+  // Same failure as the gauges above, in the other panel: `get_constitution` did not
+  // answer, so `constitutional_kinds` and `governance_fields` were undefined and `.length`
+  // on either threw. These are constants in the contract, so a reader that cannot state
+  // them has to say so — the alternative, a count of zero, would be a claim about what a
+  // vote may not change, made from no data at all.
+  const readable = Number.isFinite(constitution?.min_quorum_bps);
+
   return (
     <>
       <p className="faint" style={{ fontSize: "0.82rem", marginTop: 4 }}>
         Constants in the contract, not values in storage. A vote may move quorum and
         the ceiling within these; it cannot move these.
       </p>
-      <Facts
-        rows={[
-          ["Quorum floor", `${(constitution.min_quorum_bps / 100).toFixed(0)}%`],
-          ["Ceiling ceiling", `${(constitution.max_spend_ceiling_bps / 100).toFixed(0)}%`],
-          ["Constitutional kinds", constitution.constitutional_kinds.length],
-          ["Governance fields", constitution.governance_fields.length],
-        ]}
-      />
+      {readable ? (
+        <Facts
+          rows={[
+            ["Quorum floor", `${(constitution.min_quorum_bps / 100).toFixed(0)}%`],
+            ["Ceiling ceiling", `${(constitution.max_spend_ceiling_bps / 100).toFixed(0)}%`],
+            ["Constitutional kinds", constitution.constitutional_kinds?.length ?? "unreadable"],
+            ["Governance fields", constitution.governance_fields?.length ?? "unreadable"],
+          ]}
+        />
+      ) : (
+        <p className="faint" style={{ fontSize: "0.84rem", margin: "0 0 10px" }}>
+          <code>get_constitution</code> did not answer, so the constants a vote cannot
+          move are not shown. The limits are not inferred from the state view.
+        </p>
+      )}
     </>
   );
 }

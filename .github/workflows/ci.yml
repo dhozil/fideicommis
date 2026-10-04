@@ -325,6 +325,16 @@ jobs:
       - name: the drift warning can only fire on real drift
         run: npx --yes tsx@4 tests/check_mission_log.mts
 
+      # readTrust fills an unanswered view with an empty object rather than refusing to
+      # render, which is right for the page and lethal for a panel that reads the hole as
+      # data. Two of them did: `.toLocaleString()` on an undefined `total_shares` and
+      # `.length` on an undefined `constitutional_kinds`. Found by loading a trust whose
+      # constitution views did not answer, which is a state the reader is built to survive.
+      # The substitute has to be the word "unreadable" and never a zero, because a zero on
+      # a constitutional track is a claim about what a vote may not move.
+      - name: an unreadable view shows as unreadable, not as a crash
+        run: npx --yes tsx@4 tests/check_degraded_panels.mts
+
       # Negative caching is the one change here that could make the reader lie: a
       # remembered "this node has no record of it", replayed after the transaction
       # settled, would report an absence for something real. Three ways that could go
