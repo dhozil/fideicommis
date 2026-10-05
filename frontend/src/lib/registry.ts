@@ -28,6 +28,17 @@ export const LISTED_TRUSTS: ListedTrust[] = [
     note: "Deployed from the current source on Studionet.",
   },
   {
+    // This one was missing from the directory while being the only deployment anyone could
+    // actually act in. It is the trust whose single member is the address the repository's
+    // own scripts are driven with, so a grant here can be voted on and executed rather than
+    // only read; the other two have a member whose key exists nowhere in the repository, so
+    // their proposals sit assessed and unvoted forever. A directory that lists two of the
+    // three and omits the only live one is worse than no directory.
+    address: "0xaEDf11fD920Fc8C06EB6754387072C97D0e468aF",
+    purpose: "A trust with history: three proposals, one grant executed and settled.",
+    note: "The only listed trust whose member can be driven from this repository.",
+  },
+  {
     address: "0x89D3E2F937a265583BF308F2d5250445e1f7113F",
     purpose: "An earlier deployment of the same contract, kept so old claims stay checkable.",
     note: "Previous build. Figures here are that build's, not this one's.",
