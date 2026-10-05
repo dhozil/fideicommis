@@ -91,10 +91,28 @@ export function TrustRecordView({ address }: { address: string }) {
             Nothing answered at that address
           </h1>
           <p>{problem.message}</p>
-          <p className="muted" style={{ marginBottom: 0 }}>
+          {/* The three reasons are ranked by how often they are the actual one, and the
+              first is first because a reader who pasted their own wallet is far likelier
+              than one who typed a bad character. Format validation cannot separate them:
+              a wallet address and a contract address are the same 42 characters. */}
+          <ul style={{ margin: "12px 0 0", paddingLeft: "20px", fontSize: "0.88rem" }}>
+            <li>
+              It is a <strong>wallet address</strong>, not a contract. A wallet answers no
+              view methods, and it looks exactly like a contract address.
+            </li>
+            <li>
+              It is a contract, but not a Fideicommis — any other GenLayer contract looks
+              the same from here.
+            </li>
+            <li>
+              It is a Fideicommis on <strong>another network</strong>. This reader reads
+              Studionet; an address from testnet is a different contract entirely.
+            </li>
+          </ul>
+          <p className="muted" style={{ margin: "12px 0 0", fontSize: "0.88rem" }}>
             A Fideicommis answers <code>get_org_name</code> and{" "}
-            <code>get_constitution</code>; an address that is not a deployed contract
-            answers nothing at all.
+            <code>get_constitution</code>. Try{" "}
+            <a href="/trusts">the directory</a> for addresses that are known to answer.
           </p>
         </div>
       </section>
