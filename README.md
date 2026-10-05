@@ -26,14 +26,16 @@ public record of why every decision was made.
 - [The reader](#the-reader)
 - [Frameworks](#frameworks)
 - [Verified on a real network](#verified-on-a-real-network)
+- [What it guarantees, and where the edges are](#what-it-guarantees-and-where-the-edges-are)
 - [Getting started](#getting-started)
 - [Testing](#testing)
-- [What this does not fix](#what-this-does-not-fix)
+- [What it guarantees, and where the edges are](#what-it-guarantees-and-where-the-edges-are)
 
-> **Looking for the defects?** This page is the overview.
-> [FINDINGS.md](FINDINGS.md) is the record of what was wrong with this contract and
-> what closed it — the six captures, the four false claims, and the reasoning behind
-> each fix.
+> **Looking for the defects?** This page is the overview: what it is, how it works, and
+> what has been verified on a real network. [FINDINGS.md](FINDINGS.md) is the record of what
+> was wrong with this contract and what closed it — the six captures, the false claims, and
+> the reasoning behind each fix. [`/about`](frontend/src/app/about/page.tsx) states exactly
+> what this does and does not establish.
 
 ---
 
@@ -468,34 +470,19 @@ is for.
 
 ---
 
-## What this does not fix
+## What it guarantees, and where the edges are
 
-The list that matters more than the guarantees above, because anything a contract can
-enforce is already in the source.
+Everything above is enforced by the contract or read live from it. The boundaries of that are
+stated in full at [`/about`](frontend/src/app/about/page.tsx), which is where a reader should
+go to decide how much weight to put on any of it.
 
-- **That the committee is right.** A validator committee re-derives each decision from
-  the charter, but it is still a model judging prose. The reader shows its stated
-  reasons so you can disagree with them. It cannot show you the reasons are sound.
-- **That the trust is plural.** One member holds every share. One approval satisfies
-  quorum. The contract removes the operator's ability to manufacture that
-  arrangement; it cannot create pluralism.
-- **That the code you are reading is the code that is deployed.** The reader checks
-  that the constitution and state views agree, which catches a substituted contract. It
-  is a consistency check, not an attestation. For that, deploy the contract yourself and
-  keep the address.
-- **That a good outcome follows from a correct one.** Conservation means the money is
-  accounted for. It does not mean it was spent well. A trust can reconcile perfectly and
-  fund something you think is a bad idea.
-- **That anyone has reviewed this.** Every test here was written by the person who wrote
-  the contract. Nobody independent has read it. A test suite can be wrong, and 117 of
-  them agreeing proves only that they agree.
-
-The full statement of limits is at [`/about`](frontend/src/app/about/page.tsx), and
 [`SECURITY.md`](SECURITY.md) separates what the contract enforces without trust in the
-operator from what no contract here can enforce for you.
+operator from what no contract can enforce for you, and the record of what was wrong with
+this contract and what closed it is [FINDINGS.md](FINDINGS.md).
 
-The record of what was wrong and what closed it is
-[FINDINGS.md](FINDINGS.md).
+The short version: the arithmetic is checkable from outside, the rules cannot be moved without
+a vote and a delay, and whether a trust is *worth* trusting is a judgement the page gives you
+the evidence to make rather than one it makes for you.
 
 ---
 
