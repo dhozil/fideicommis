@@ -62,39 +62,82 @@ jobs:
       # harness's name for it is not one this project can rely on. Asking the release
       # rather than hardcoding either spelling means a second rename is a clear message
       # here instead of 93 HTTP 404s later.
+      #
+      # This used to call api.github.com unauthenticated, and that failed intermittently
+      # with `HTTP Error 403: rate limit exceeded` — GitHub-hosted runners share an IP, and
+      # the unauthenticated API allows 60 requests an hour per IP. The failure had nothing
+      # to do with the contract or the reader; it was a shared-IP limit on a step that only
+      # needs one asset name.
+      #
+      # It no longer uses the API. `releases/latest/download/<asset>` redirects to the asset
+      # without touching the API, so there is no rate limit to hit at all, and the version
+      # comes from the redirect's final URL rather than from a JSON field. The token is also
+      # sent when one exists, which raises the ceiling from 60 an hour to 5000 for anyone who
+      # reads this later and reintroduces the API call on purpose.
       - name: resolve the GenVM runner asset
         id: runner-check
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           python - <<'PY' > "$GITHUB_OUTPUT"
-          import json, sys, urllib.request
+          import os, re, sys, urllib.error, urllib.request
 
           BROWSER = "Mozilla/5.0 (compatible; fideicommis-ci)"
-          request = urllib.request.Request(
-              "https://api.github.com/repos/genlayerlabs/genvm/releases/latest",
-              headers={"User-Agent": BROWSER},
-          )
-          release = json.load(urllib.request.urlopen(request, timeout=60))
-          # Prefer the name the harness asks for, fall back to the runners asset, so this
-          # survives either side of a rename.
-          universal = next(
-              (a for a in release["assets"] if a["name"] == "genvm-universal.tar.xz"), None
-          )
-          runners = next(
-              (
-                  a
-                  for a in release["assets"]
-                  if "runners" in a["name"] and a["name"].endswith(".tar.xz")
-              ),
-              None,
-          )
-          chosen = universal or runners
+          # Both spellings this project has seen, tried in the order the harness prefers.
+          # A miss is a message here rather than 93 HTTP 404s later.
+          CANDIDATES = ("genvm-universal.tar.xz", "genvm-runners-all.tar.xz")
+          BASE = "https://github.com/genlayerlabs/genvm/releases/latest/download"
+
+          token = os.environ.get("GH_TOKEN", "")
+          headers = {"User-Agent": BROWSER}
+          if token:
+              headers["Authorization"] = f"Bearer {token}"
+
+          chosen = None
+          for name in CANDIDATES:
+              request = urllib.request.Request(f"{BASE}/{name}", headers=headers)
+              try:
+                  with urllib.request.urlopen(request, timeout=90) as response:
+                      if response.status != 200:
+                          continue
+              except urllib.error.HTTPError as err:
+                  print(f"  {name}: HTTP {err.code}", file=sys.stderr)
+                  continue
+              except Exception as err:  # noqa: BLE001 - reported, not swallowed
+                  print(f"  {name}: {err}", file=sys.stderr)
+                  continue
+              chosen = name
+              break
+
           if chosen is None:
               raise SystemExit(
-                  "no runners asset in this release: "
-                  + ", ".join(a["name"] for a in release["assets"])
+                  f"none of {', '.join(CANDIDATES)} resolved at {BASE}. "
+                  "If the asset was renamed a third time, this is where to find out."
               )
-          print(f"version={release['tag_name']}", file=sys.stdout)
-          print(f"asset={chosen['name']}", file=sys.stdout)
+
+          # The version comes from the release redirect rather than from the asset's final
+          # URL: following the download lands on release-assets.githubusercontent.com, where
+          # the tag is long gone. This URL is a 302 to /tag/<version> and never touches the
+          # API, so there is no rate limit on the one request this step makes.
+          request = urllib.request.Request(
+              "https://github.com/genlayerlabs/genvm/releases/latest", headers=headers
+          )
+          class _NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+
+          opener = urllib.request.build_opener(_NoRedirect)
+          version = "unknown"
+          try:
+              opener.open(request, timeout=60)
+          except urllib.error.HTTPError as err:
+              location = err.headers.get("Location", "")
+              found = re.search(r"/tag/([^/?#]+)", location)
+              if found:
+                  version = found.group(1)
+
+          print(f"version={version}", file=sys.stdout)
+          print(f"asset={chosen}", file=sys.stdout)
           PY
 
       # States the diagnosis in the log, rather than leaving it in a commit message where

@@ -28,15 +28,30 @@ export const LISTED_TRUSTS: ListedTrust[] = [
     note: "Deployed from the current source on Studionet.",
   },
   {
+    // Deployed from the current source with a wallet that can sign for its own single
+    // member, which makes it the only listed trust whose whole path is reachable from the
+    // browser: its grants are voted on, executed, reviewed and settled rather than resting
+    // at "assessed". It is also the trust that proved the timelock applies to GOVERNANCE and
+    // CHARTER_AMENDMENT only, and that a GRANT deliberately does not wait.
+    address: "0x0A3912aa80a403efDEf664A8e03895CCF5b137D8",
+    purpose: "A completed cycle: two grants assessed, voted, paid, reviewed and settled.",
+    note: "The only listed trust with settled deliveries, and the only one whose member is reachable from this repository.",
+  },
+  {
     // This one was missing from the directory while being the only deployment anyone could
     // actually act in. It is the trust whose single member is the address the repository's
     // own scripts are driven with, so a grant here can be voted on and executed rather than
     // only read; the other two have a member whose key exists nowhere in the repository, so
     // their proposals sit assessed and unvoted forever. A directory that lists two of the
     // three and omits the only live one is worse than no directory.
+    //
+    // Listed for completeness rather than for use: its `get_constitution` and
+    // `get_constitutional_state` both refuse, on a build older than the current source.
+    // Studionet cannot upgrade a contract, so that is permanent. Its reader page shows the
+    // Constitution panel as unreadable, which is the honest rendering of a broken view.
     address: "0xaEDf11fD920Fc8C06EB6754387072C97D0e468aF",
-    purpose: "A trust with history: three proposals, one grant executed and settled.",
-    note: "The only listed trust whose member can be driven from this repository.",
+    purpose: "A trust with history, listed with a warning: two of its views refuse.",
+    note: "Broken on an older build. get_constitution and get_constitutional_state refuse, and cannot be repaired in place.",
   },
   {
     address: "0x89D3E2F937a265583BF308F2d5250445e1f7113F",
