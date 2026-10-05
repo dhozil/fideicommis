@@ -317,10 +317,10 @@ be set, which `check_deploy.py` enforces rather than trusting.
 | Contract | Python 3.12, GenVM | runner pinned to `py-genlayer:1jb45aa8yn…` |
 | Static analysis | `genvm-lint` | the official linter for the pinned runner, and what CI gates on |
 | Testing | `pytest`, `genlayer-test`, `gltest` | direct mode in-process; Studio mode against a committee |
-| Frontend | Next.js 16, React 19 | App Router, server-rendered, strict TypeScript |
+| Frontend | Next.js 16, React 19 | App Router; the page paints before the chain is read |
 | Chain SDK | `genlayer-js` | server-only; never reaches a browser bundle |
 | Wallet | injected EIP-1193, `viem` | MetaMask, Rabby, or any compatible wallet |
-| Type | IBM Plex Sans, IBM Plex Mono, Newsreader | prose, data, and the charter's voice |
+| Type | IBM Plex Sans, IBM Plex Mono, Newsreader | prose, data, and the charter's voice; self-hosted, SIL OFL |
 
 The runner version is pinned in a `Depends` header because GenLayer's storage layout is
 positional: the deployed bytecode and the source have to agree exactly, and an unpinned
@@ -330,34 +330,68 @@ runner is a way to change that underneath you.
 
 ## Verified on a real network
 
-On Studionet, with real model calls and a real validator committee. The grant below pays
-a **non-member** beneficiary, so the money genuinely leaves the trust.
+On Studionet, with real model calls and a real validator committee.
+
+**The deployment that can be fully audited** is `0x0A3912aa80a403efDEf664A8e03895CCF5b137D8`,
+built from the current source. Nine transactions walked the whole path — derive the rulebook,
+fund, propose, have the committee judge, vote, execute, review the delivery, settle — and the
+grant below pays a real beneficiary, so the money genuinely leaves the trust.
 
 ```
-trust      : 0x50590E26DB529954633b1e8e887d5f9501c0C4DF
-beneficiary: 0xb94e5cb14acfaabd03aa69f599a30a3799c773af   (not a member)
-policy     : burn 0, keeper 0, tick 60s, ceiling 20 percent
+trust      : 0x0A3912aa80a403efDEf664A8e03895CCF5b137D8   "Open Ledger Fund"
+beneficiary: 0x646454E139609564ae2bbDA7762bB4ADaA01B467
+policy     : burn 0, keeper 0, tick 60s, ceiling 20 percent of treasury
 
-[1-4] deploy, bootstrap_rules (5 rules), fund 0.400000, set_policy
-[6]  assess_proposal p1  -> COMPLIANT  confidence 95
-[8]  advance_cycle       -> action=FUND     treasury 0.400000 -> 0.380000
-     {"memo": "autonomous_fund:p1",   "to": "0xB94E...739AF"}
-[9]  review_delivery     -> ACCEPTED  score 100
-[10] advance_cycle       -> action=SETTLE   treasury 0.380000 -> 0.360000
-     {"memo": "autonomous_settle:p1", "to": "0xB94E...739AF"}
-[11] charter amendment   -> COMPLIANT, vote, execute
-     charter rewritten  version 1 -> 2
-     new rule present   ok
-     rulebook cleared   ok
+[1] bootstrap_rules  -> 7 rules derived from the charter
+[2] fund 1.000000    -> treasury 1.000000, ceiling 0 -> 0.200000
+[3] submit_proposal  -> p1, 0.050000 GEN, verdict PENDING
+[4] assess_proposal  -> COMPLIANT   violations []
+[5] cast_vote        -> approvals 1, quorum reached
+[6] execute_proposal -> payout, grant tranche released
+[7] review_delivery  -> ACCEPTED    score 95
+[8] settle_delivery  -> second tranche released, p1 settled
+    ... identical for p2
+
+inflow 1.000000 == treasury 0.805000 + granted 0.100000 + settled 0.095000
+                  + dissolved 0 + keeper_paid 0 + burned 0
 ```
 
-Nobody instructed any of that. `advance_cycle` was called by a keeper, and the committee
-chose FUND and then SETTLE.
+Two grants, both `COMPLIANT`, both `ACCEPTED` at score 95, both settled. The same proposal
+was first refused as `NON_COMPLIANT` with violations `["BUDGET_CEILING","R1"]` while the
+treasury was empty, and accepted once it was funded — the committee read the on-chain ceiling
+rather than the text. A ceiling of zero makes every positive grant a violation, so the
+refusal was correct and said why.
 
-Also verified live, on earlier trusts: the funding loop with per-cycle burn and keeper
-reimbursement; dormancy when the treasury empties; revival by `fund()`; the rejection
-path where a surveillance grant is blocked from both voting and payment; and the full
-grant and settlement path driven by hand.
+**The constitutional delay covers `GOVERNANCE` and `CHARTER_AMENDMENT` only.** A `GRANT` does
+not wait: `execute_proposal` checks `kind in CONSTITUTIONAL_KINDS` before requiring the
+timelock, and that branch is asserted by the timelock consensus test. A script written during
+this work predicted the opposite and was wrong, which is why it is stated here.
+
+### The earlier deployments, and what each cannot show
+
+Four older trusts exist. All are live, and **none of them can be audited in full** — an older
+build of this contract, and Studionet cannot upgrade a contract, so none of it is repairable
+in place. They are listed because omitting them would present the current source as the only
+thing that ever ran.
+
+| Trust | Status | What it cannot show |
+| --- | --- | --- |
+| `0x76051A36…0597` | ACTIVE, 6 rules, 2 proposals | `p1` rests `NON_COMPLIANT`: its ceiling was 0 |
+| `0xaEDf11fD…468aF` | ACTIVE, 8 rules, 3 proposals | `get_constitution` and `get_constitutional_state` **refuse** |
+| `0x89D3E2F9…113F` | ACTIVE, 6 rules, 1 settled | Previous build; figures are that build's |
+| `0x50590E26…C4DF` | ACTIVE, 2 proposals, 1 settled | Both constitution views **refuse**, and `get_lifetime_flow` returns three fields |
+
+That last row is the important one. On `0x50590E26…` the conservation ledger **cannot be
+checked at all**, because its `get_lifetime_flow` returns only `inflow_atto`,
+`keeper_paid_atto` and `outflow_atto` — there are no buckets to sum. An earlier version of
+this file led with that deployment as the verification, which overstated it: the identity
+this project is built around is a current-source feature, and only a current-source
+deployment can demonstrate it.
+
+Also verified live on the older trusts: the funding loop with per-cycle burn and keeper
+reimbursement; dormancy when the treasury empties; revival by `fund()`; the rejection path
+where a surveillance grant is blocked from both voting and payment; and a charter amendment
+that raised the charter from version 1 to 2 and cleared the rulebook.
 
 The four operator captures were asserted as **refused** against a live deployment:
 
@@ -410,11 +444,11 @@ gltest tests/integration -v -s --network studionet
 gltest tests/integration -v -s -m slow --network studionet
 ```
 
-The eight consensus tests take about ten minutes, because every transaction goes
-through a real committee and the node answers in seconds rather than milliseconds. The
-five marked `slow` additionally call real models and take about eleven minutes more.
-Two of them skip, legitimately: the committee judged those proposals non-compliant,
-which is a valid outcome rather than a failure.
+The eight consensus tests took 6m03s on the run that produced the figures above, because
+every transaction goes through a real committee. The five marked `slow` additionally call
+real models and took 6m59s. Two of them skip, legitimately: the committee judged those
+proposals non-compliant, which is a valid outcome rather than a failure. So 11 of the 13
+pass and 2 skip, and none of the skips hides a defect.
 
 For the reader:
 

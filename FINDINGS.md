@@ -520,8 +520,36 @@ transfer still requires a balance.
 ## Verified on real GenVM
 
 The claims that make this an autonomous trust, on Studionet, with real model calls
-and a real validator committee. Grants here pay a **non-member** beneficiary, so
-the money genuinely leaves the trust.
+and a real validator committee.
+
+**`0x50590E26DB529954633b1e8e887d5f9501c0C4DF` is an older build and cannot carry these
+claims.** Both constitution views refuse on it, and its `get_lifetime_flow` returns three
+fields — `inflow_atto`, `keeper_paid_atto`, `outflow_atto` — with no buckets to sum, so the
+conservation identity is simply not present to be checked there. The run below did happen and
+is kept as history; what it cannot evidence is the ledger.
+
+The deployment that can is `0x0A3912aa80a403efDEf664A8e03895CCF5b137D8`, from the current
+source, where nine transactions walked the whole path and the buckets balance exactly:
+
+```
+trust      : 0x0A3912aa80a403efDEf664A8e03895CCF5b137D8   "Open Ledger Fund"
+beneficiary: 0x646454E139609564ae2bbDA7762bB4ADaA01B467
+policy     : burn 0, keeper 0, tick 60s, ceiling 20 percent of treasury
+
+[1] bootstrap_rules  -> 7 rules derived from the charter
+[2] fund 1.000000    -> treasury 1.000000, ceiling 0 -> 0.200000
+[3] submit_proposal  -> p1, 0.050000 GEN, verdict PENDING
+[4] assess_proposal  -> COMPLIANT   violations []
+[5] cast_vote        -> approvals 1, quorum reached
+[6] execute_proposal -> payout, grant tranche released
+[7] review_delivery  -> ACCEPTED    score 95
+[8] settle_delivery  -> second tranche released, p1 settled
+
+inflow 1.000000 == treasury 0.805000 + granted 0.100000 + settled 0.095000
+                  + dissolved 0 + keeper_paid 0 + burned 0
+```
+
+The earlier run, on the older build:
 
 ```
 trust      : 0x50590E26DB529954633b1e8e887d5f9501c0C4DF
