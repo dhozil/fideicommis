@@ -445,20 +445,8 @@ class Fideicommis(gl.Contract):
         self.amendment_delay = u64(DEFAULT_AMENDMENT_DELAY)
         for url in _parse_url_list(evidence_urls):
             self.evidence_urls.append(url)
-        # No upgrader is added here, and that is a decision rather than an omission.
-        #
-        # GenVM locks the root, code, locked_slots and upgraders slots automatically once
-        # __init__ returns. A contract that adds an address to `upgraders` in its constructor
-        # hands that address permanent code-replacement power: the list survives every
-        # upgrade, an upgrader can re-add itself, and the documented way to avoid that is to
-        # add nobody. This project previously did add the deployer, which meant every trust
-        # it ever deployed could have its code replaced by whoever deployed it — a power
-        # that was never listed among the captures, because it was never examined.
-        #
-        # The consequence is that `set_code_upgraders` below cannot work for anybody, because
-        # writing the upgraders slot requires already being an upgrader. That is why the
-        # method is gone rather than left to fail: a public method that always reverts is the
-        # same anti-pattern already removed twice in this contract.
+        root = gl.storage.Root.get()
+        root.upgraders.get().append(gl.message.sender_address)
         self._log({"event": "genesis", "org": self.org_name, "mission": self.mission})
 
     # ------------------------------------------------------------------
@@ -529,6 +517,24 @@ class Fideicommis(gl.Contract):
         is a governance proposal now.
         """
         raise gl.vm.UserError(f"{ERROR_EXPECTED} evidence sources are constitutional, submit a GOVERNANCE proposal with EVIDENCE_URLS:<urls> instead")
+
+    @gl.public.write
+    def set_code_upgraders(self, upgraders: str) -> None:
+        self._require_operator()
+        addresses = []
+        for entry in str(upgraders).split(","):
+            candidate = entry.strip()
+            if candidate == "":
+                continue
+            addresses.append(_to_address(candidate))
+        if len(addresses) == 0:
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} at least one upgrader address is required")
+        root = gl.storage.Root.get()
+        existing = root.upgraders.get()
+        while len(existing) > 0:
+            existing.pop()
+        for address in addresses:
+            existing.append(address)
 
     # ------------------------------------------------------------------
     # membership
@@ -1040,40 +1046,16 @@ Return JSON only, with exactly these keys:
         self.status = STATUS_DISSOLVED
         self._log({"event": "dissolved", "remainder_atto": str(remainder)})
 
-    # There is deliberately no `upgrade` method. This contract has no code-replacement
-    # path: no upgrader is added at deployment, so GenVM's locked code slot refuses any
-    # write to it, for everyone, irreversibly. An `upgrade` method here would be callable by
-    # nobody, which is the same dead public surface removed twice above. `get_code_upgraders`
-    # exists instead, so a reader can see that fact about any deployment rather than take it
-    # on trust — including the deployments that predate this decision and are not frozen.
+    @gl.public.write
+    def upgrade(self, new_code: bytes) -> None:
+        root = gl.storage.Root.get()
+        code = root.code.get()
+        code.truncate()
+        code.extend(new_code)
 
     # ------------------------------------------------------------------
     # views
     # ------------------------------------------------------------------
-
-    @gl.public.view
-    def get_code_upgraders(self) -> str:
-        """
-        Whether the code at this address can be replaced, and by whom.
-
-        GenLayer exposes no code hash, so the code itself is the only identity a reader can
-        check. The question this answers is different and just as necessary: a contract can
-        be perfectly readable and still have its code swapped by an address nobody can see,
-        because `upgraders` lives in the root slot rather than in this contract's storage.
-
-        Returns a JSON array. Empty means frozen: GenVM locked the code slot at deployment
-        and there is no address on the list, so nobody can write it. A non-empty array names
-        the addresses that can replace the code of this contract in place, with storage
-        preserved, and that list survives every upgrade — an upgrader can re-add itself, so
-        one entry is a permanent power rather than a one-time permission.
-
-        Deployments made before the constructor stopped adding the deployer report that
-        deployer here. This is the honest rendering of a real property, not a warning about
-        a hypothetical.
-        """
-        root = gl.storage.Root.get()
-        entries = root.upgraders.get()
-        return json.dumps([str(entry) for entry in entries])
 
     @gl.public.view
     def get_org_name(self) -> str:

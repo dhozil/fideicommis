@@ -301,6 +301,8 @@ export function TrustRecordView({ address }: { address: string }) {
               charterVersion={record.charterVersion}
               charterHistory={record.charterHistory}
               evidenceUrls={record.evidenceUrls}
+              codeUpgraders={record.codeUpgraders}
+              upgradeabilityKnown={record.upgradeabilityKnown}
             />
           </div>
         </aside>

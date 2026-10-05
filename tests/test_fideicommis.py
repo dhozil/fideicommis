@@ -492,6 +492,77 @@ def test_clear_rules_is_not_an_operator_power(warp, direct_vm, direct_deploy, di
     assert len(json.loads(org.get_charter_rules())) == 5
 
 
+# ------------------------------------------------------------ code replacement
+
+
+def test_a_fresh_deployment_has_no_upgraders(warp, direct_vm, direct_deploy, direct_owner):
+    """
+    A deployment is frozen, and the constructor is what makes it so.
+
+    GenVM locks the root, code, locked_slots and upgraders slots as soon as __init__
+    returns. The documented way to stay frozen is to add nobody to `upgraders`. This
+    contract previously added the deployer, which handed whoever deployed a trust
+    permanent code-replacement power — the list survives every upgrade and an upgrader
+    can re-add itself. That power was never examined, so it never appeared among the
+    captures; it is a fifth one.
+    """
+    org = build(direct_vm, direct_deploy, direct_owner)
+    assert json.loads(org.get_code_upgraders()) == []
+
+
+def test_the_deployer_is_not_an_upgrader(warp, direct_vm, direct_deploy, direct_owner):
+    """
+    The specific correction. The deployer is the obvious person to trust with an
+    upgrade, and trusting them is what made every trust ever deployed replaceable.
+    """
+    org = build(direct_vm, direct_deploy, direct_owner)
+    upgraders = json.loads(org.get_code_upgraders())
+    assert all(str(entry).lower() != hx(direct_owner) for entry in upgraders)
+
+
+def test_there_is_no_way_to_become_an_upgrader(warp, direct_vm, direct_deploy, direct_owner, direct_bob):
+    """
+    Neither the operator nor anyone else can add themselves.
+
+    Both methods that could have granted this are gone: `upgrade`, which replaced the code
+    outright, and `set_code_upgraders`, which wrote the upgraders slot. The second could
+    never have worked for anyone but a deployer anyway, because writing that slot requires
+    already being an upgrader — it was dead public surface, the same anti-pattern already
+    removed twice in this contract.
+    """
+    org = build(direct_vm, direct_deploy, direct_owner)
+    bootstrap(org, direct_vm)
+
+    with direct_vm.expect_revert():
+        org.set_code_upgraders(hx(direct_owner))
+
+    with direct_vm.prank(hx(direct_owner)):
+        with direct_vm.expect_revert():
+            org.set_code_upgraders(hx(direct_bob))
+
+    assert json.loads(org.get_code_upgraders()) == []
+
+
+def test_the_view_is_what_an_auditor_needs(warp, direct_vm, direct_deploy, direct_owner):
+    """
+    Frozen is a claim; this makes it checkable from outside.
+
+    `upgraders` lives in the root slot, not in this contract's storage, so it is
+    invisible to every other view. A trust can be perfectly readable and still have its
+    code swapped by an address nobody can see. The view is the difference between asserting
+    immutability and demonstrating it, and it reports the truth for older deployments too:
+    a previous build named its deployer there, which is a real and permanent property of
+    that address rather than a hypothetical.
+    """
+    org = build(direct_vm, direct_deploy, direct_owner)
+    raw = org.get_code_upgraders()
+    assert raw == "[]"
+    # It must parse as JSON, because the reader parses every view with the same helper and
+    # a hand-built string here would look identical to a list to the contract and different
+    # to the reader.
+    assert json.loads(raw) == []
+
+
 # ---------------------------------------------------------------- proposals
 
 

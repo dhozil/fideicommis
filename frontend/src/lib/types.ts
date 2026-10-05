@@ -158,6 +158,17 @@ export interface TrustRecord {
   missingWrites: string[];
   /** False when the probe failed, so `missingWrites` is empty because nothing was ruled out. */
   capabilitiesVerified: boolean;
+  /**
+   * Addresses that can replace this contract's code in place. Empty means frozen.
+   *
+   * This lives in the GenVM root slot rather than in the contract's storage, so no method
+   * list reveals it: a trust can be perfectly readable and still have its code swapped by an
+   * address that no view discloses. Deployments made before the constructor stopped naming
+   * the deployer report that deployer, permanently — the list survives every upgrade.
+   */
+  codeUpgraders: string[];
+  /** False for a deployment predating the view, where the answer is unknown rather than safe. */
+  upgradeabilityKnown: boolean;
 }
 
 /**

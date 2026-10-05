@@ -1,5 +1,7 @@
 import "server-only";
 
+import { readJSON } from "./genlayer";
+
 /**
  * What a deployed trust's bytecode actually exposes.
  *
@@ -40,7 +42,6 @@ import "server-only";
 export const READER_WRITES = [
   "fund",
   "set_policy",
-  "set_code_upgraders",
   "bootstrap_rules",
   "submit_proposal",
   "assess_proposal",
@@ -60,6 +61,15 @@ export interface Capabilities {
 }
 
 const RPC_URL = "https://studio.genlayer.com/api";
+
+/**
+ * Upgradeability, cached per address like the method list.
+ *
+ * A separate cache because the two facts have different shapes: the method list is fetched
+ * from a schema call, and this is a view read. Both are immutable per deployment, so neither
+ * is a cache of live data that could go stale.
+ */
+const upgradeCache = new Map<string, Upgradeability | null>();
 
 /**
  * Method names per address, for the process lifetime.
@@ -127,4 +137,61 @@ export async function capabilitiesOf(address: string): Promise<Capabilities> {
     missing: READER_WRITES.filter((method) => !names.has(method)),
     verified: true,
   };
+}
+
+/**
+ * Whether the code at an address can be replaced, and by whom.
+ *
+ * This is a different question from "does it have the methods the reader needs", and the
+ * two used to be conflated: the reader's `Name the code upgraders` button was a write that
+ * could only ever be granted by someone who was already an upgrader, so it was dead surface
+ * presented as a control. Nothing in the method list reveals whether the *code* is mutable,
+ * because `upgraders` lives in the GenVM root slot rather than in the contract's storage.
+ *
+ * A trust can therefore be perfectly readable and still have its code swapped by an address
+ * no view method discloses. That is a property of the deployment rather than of the source,
+ * so it has to be read per address.
+ *
+ * Deployments made before the constructor stopped naming the deployer report that deployer,
+ * and it is permanent: the list survives every upgrade and an upgrader can re-add itself.
+ * Reported rather than hidden, because it is exactly the sort of thing a reader exists to
+ * surface.
+ */
+export interface Upgradeability {
+  /** Addresses that can replace this contract's code in place. Empty means frozen. */
+  upgraders: string[];
+  /** False when the deployment predates the view and the answer could not be read. */
+  known: boolean;
+}
+
+export async function upgradeabilityOf(address: string): Promise<Upgradeability> {
+  const key = address.trim().toLowerCase();
+  const cached = upgradeCache.get(key);
+  if (cached !== undefined) return cached ?? { upgraders: [], known: false };
+
+  let answer: Upgradeability | null = null;
+  try {
+    const names = await methodsAt(address);
+    if (names?.has("get_code_upgraders")) {
+      // The SDK reader is used rather than hand-rolled RPC. Raw `gen_call` was tried in three
+      // parameter shapes and all three answered `ERR 'type'` — a node-side error from
+      // guessing the shape. The SDK call works and is already the project's tested path; the
+      // one SDK method that is broken is `getContractSchema`, which is why the schema above
+      // goes around it and this does not.
+      const parsed = await readJSON<unknown>(address, "get_code_upgraders");
+      const list = typeof parsed === "string" ? (JSON.parse(parsed) as unknown) : parsed;
+      answer = Array.isArray(list)
+        ? { upgraders: list.map(String), known: true }
+        : { upgraders: [], known: false };
+    } else {
+      // An older build has no such view, so its code mutability is not discoverable from the
+      // contract at all. That is the honest answer: unknown, not "safe".
+      answer = { upgraders: [], known: false };
+    }
+  } catch {
+    answer = { upgraders: [], known: false };
+  }
+
+  upgradeCache.set(key, answer);
+  return answer;
 }

@@ -103,6 +103,8 @@ export function Provenance({
   charterVersion,
   charterHistory,
   evidenceUrls,
+  codeUpgraders,
+  upgradeabilityKnown,
 }: {
   address: string;
   status: string;
@@ -112,6 +114,10 @@ export function Provenance({
   charterVersion: string;
   charterHistory: string[];
   evidenceUrls: string[];
+  /** Addresses that can replace this contract's code in place. Empty means frozen. */
+  codeUpgraders: string[];
+  /** False when the deployment predates the view, so the answer is unknown rather than safe. */
+  upgradeabilityKnown: boolean;
 }) {
   const statusMatches = statusView === "" || statusView === status;
   const treasuryMatches = treasuryView === "" || treasuryView === treasury;
@@ -162,6 +168,44 @@ export function Provenance({
           )}
         </dd>
       </dl>
+
+      {/* Whether the code at this address can be replaced, and by whom. This is a different
+          question from whether the contract has the methods the reader needs, and it used to
+          be invisible: `upgraders` lives in the GenVM root slot rather than in the contract's
+          storage, so no method list reveals it. A deployment made before the constructor
+          stopped naming the deployer reports that deployer, permanently. Shown because a
+          reader that cannot see this is a reader that cannot tell a frozen trust from a
+          mutable one. */}
+      <div style={{ marginTop: 14 }}>
+        <span className="eyebrow" style={{ marginBottom: 6 }}>
+          Can this code be replaced?
+        </span>
+        {!upgradeabilityKnown ? (
+          <p className="faint" style={{ fontSize: "0.84rem", margin: 0 }}>
+            This deployment predates the view that answers it, so whether its code can be
+            replaced is not discoverable from the contract. That is unknown, not safe.
+          </p>
+        ) : codeUpgraders.length === 0 ? (
+          <p className="faint" style={{ fontSize: "0.84rem", margin: 0 }}>
+            No. GenVM locked the code slot at deployment and no address was granted
+            permission to write it, which is irreversible.
+          </p>
+        ) : (
+          <p className="notice warn" style={{ fontSize: "0.86rem", margin: 0 }}>
+            <strong>
+              Yes — {codeUpgraders.length} address{codeUpgraders.length === 1 ? "" : "es"} can
+              replace this contract&apos;s code in place.
+            </strong>{" "}
+            {codeUpgraders.map((u) => (
+              <code key={u} className="data" style={{ marginRight: 6 }}>
+                {u}
+              </code>
+            ))}
+            Storage is preserved across such a change and the list of upgraders survives it,
+            so this is a permanent power rather than a one-time permission.
+          </p>
+        )}
+      </div>
 
       {charterHistory.length ? (
         <div style={{ marginTop: 12 }}>

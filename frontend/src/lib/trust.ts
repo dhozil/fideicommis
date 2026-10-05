@@ -2,7 +2,7 @@ import "server-only";
 
 import { readJSON, readMany, parseView, RateLimitedError } from "./genlayer";
 import { isAddress } from "./address";
-import { capabilitiesOf } from "./capabilities";
+import { capabilitiesOf, upgradeabilityOf } from "./capabilities";
 import type {
   CharterRule,
   ConstitutionalState,
@@ -269,6 +269,7 @@ export async function readTrust(address: string): Promise<TrustRecord> {
   // because the network cannot upgrade a contract. It runs after the record is assembled so
   // a node that is slow to answer a schema does not delay the figures.
   const capabilities = await capabilitiesOf(addr);
+  const upgradeability = await upgradeabilityOf(addr);
 
   return {
     address: addr,
@@ -305,6 +306,8 @@ export async function readTrust(address: string): Promise<TrustRecord> {
     degraded: degraded.length ? degraded.join(" · ") : null,
     missingWrites: capabilities.missing,
     capabilitiesVerified: capabilities.verified,
+    codeUpgraders: upgradeability.upgraders,
+    upgradeabilityKnown: upgradeability.known,
   };
 }
 

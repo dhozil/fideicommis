@@ -225,7 +225,7 @@ both are pinned by tests:
 
 ```
 contracts/
-  fideicommis.py              the trust. one contract, one file, 41 methods
+  fideicommis.py              the trust. one contract, one file, 40 methods
 
 tests/
   test_fideicommis.py         direct mode, 117 tests, no network, no model calls
@@ -369,6 +369,34 @@ not wait: `execute_proposal` checks `kind in CONSTITUTIONAL_KINDS` before requir
 timelock, and that branch is asserted by the timelock consensus test. A script written during
 this work predicted the opposite and was wrong, which is why it is stated here.
 
+**A deployment is frozen, and the code says so.** GenVM locks the root, code, `locked_slots`
+and `upgraders` slots the moment `__init__` returns; adding nobody to `upgraders` is the
+documented way to stay frozen, and it is irreversible. This contract adds nobody, has no
+`upgrade` method, and no method that could grant one. `get_code_upgraders()` returns the list,
+so a reader can check that claim rather than take it:
+
+```
+0x03D0d63AC67F4D0D478d7F506530DCFD99bA338f
+  get_code_upgraders -> []
+  upgrade            -> no such method
+  set_code_upgraders -> no such method
+```
+
+This was a fifth capture, and it is worth recording how it was missed. `__init__` added the
+deployer to `upgraders`, which handed whoever deployed a trust permanent power to replace its
+code — the list survives every upgrade and an upgrader can re-add itself. It never appeared
+among the captures because it was never examined, and this project had been asserting that
+Studionet cannot upgrade a contract, which was true of every deployment and true *by
+accident*. `set_code_upgraders` was the third dead surface this contract has now removed; it
+could only ever be called by an upgrader, so the operator could use it only if the operator
+already had the thing it granted.
+
+`gen_getContractCode` returns the deployed source, which is stronger than a code hash and the
+only identity GenLayer offers — there is no `codeHash` method. The source of that deployment
+is byte-identical to the file in this repository. The same call distinguishes the builds
+without any version string: the current one defines `_require_timelock` and returns six
+conservation buckets, the older one defines neither.
+
 ### The earlier deployments, and what each cannot show
 
 Four older trusts exist. All are live, and **none of them can be audited in full** — an older
@@ -378,10 +406,19 @@ thing that ever ran.
 
 | Trust | Status | What it cannot show |
 | --- | --- | --- |
+| `0x0A3912aa…D8` | ACTIVE, 7 rules, 2 proposals, 2 settled | superseded by the frozen build below |
+| `0x03D0d63A…38f` | ACTIVE, frozen, 0 proposals | the current build; empty because nothing has happened to it yet |
 | `0x76051A36…0597` | ACTIVE, 6 rules, 2 proposals | `p1` rests `NON_COMPLIANT`: its ceiling was 0 |
 | `0xaEDf11fD…468aF` | ACTIVE, 8 rules, 3 proposals | `get_constitution` and `get_constitutional_state` **refuse** |
 | `0x89D3E2F9…113F` | ACTIVE, 6 rules, 1 settled | Previous build; figures are that build's |
 | `0x50590E26…C4DF` | ACTIVE, 2 proposals, 1 settled | Both constitution views **refuse**, and `get_lifetime_flow` returns three fields |
+
+**Every deployment before `0x03D0d63A…` can have its code replaced by whoever deployed it.**
+They predate the constructor change, so their `upgraders` list names their deployer, and the
+list is permanent. Their reader page says so, in the Provenance panel, because a reader that
+cannot distinguish a frozen trust from a mutable one is not telling you what you need to know.
+The breaks below are not — they are live, and upgrading them is a real option their deployer
+holds.
 
 That last row is the important one. On `0x50590E26…` the conservation ledger **cannot be
 checked at all**, because its `get_lifetime_flow` returns only `inflow_atto`,

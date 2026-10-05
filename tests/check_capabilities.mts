@@ -28,6 +28,7 @@ function code(source: string): string {
 }
 
 const caps = code(read("frontend/src/lib/capabilities.ts"));
+const contract = code(read("contracts/fideicommis.py"));
 const trust = code(read("frontend/src/lib/trust.ts"));
 const rules = code(read("frontend/src/components/RulesActions.tsx"));
 const actions = code(read("frontend/src/components/ProposalActions.tsx"));
@@ -85,7 +86,6 @@ console.log("=== every write the reader offers is in the list ===");
   for (const method of [
     "fund",
     "set_policy",
-    "set_code_upgraders",
     "bootstrap_rules",
     "submit_proposal",
     "assess_proposal",
@@ -97,6 +97,25 @@ console.log("=== every write the reader offers is in the list ===");
     check(`${method} is probed`, listed.includes(method));
   }
   check("no method is listed twice", new Set(listed).size === listed.length);
+  // set_code_upgraders was removed with the upgrade path. Keeping it in the list would
+  // advertise a control the source no longer has, which is the dead surface this project
+  // has now removed three times.
+  check("set_code_upgraders is gone from the source", !/def set_code_upgraders/.test(contract));
+  check("and from the probe list", !listed.includes("set_code_upgraders"));
+}
+
+console.log();
+console.log("=== code mutability is a separate question from the method list ===");
+{
+  // `upgraders` lives in the GenVM root slot, not in the contract's storage, so no method
+  // list reveals it. A trust can be perfectly readable and still have its code swapped by
+  // an address no view discloses. This is what the reader's own upgraders button used to
+  // paper over: it was a write only an upgrader could ever perform.
+  check("the view exists in the contract", /def get_code_upgraders/.test(contract));
+  check("there is no upgrade method", !/def upgrade\(/.test(contract));
+  check("the constructor adds no upgrader", !/upgraders\.get\(\)\.append/.test(contract));
+  check("the reader reads it per address", /upgradeabilityOf/.test(caps));
+  check("and distinguishes unknown from safe", /known: false/.test(caps));
 }
 
 console.log();

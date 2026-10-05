@@ -19,27 +19,6 @@ STATUS_DISSOLVED = "DISSOLVED"
 
 KIND_GRANT = "GRANT"
 KIND_CHARTER_AMENDMENT = "CHARTER_AMENDMENT"
-KIND_GOVERNANCE = "GOVERNANCE"
-# Changes to the constitution or the constitution's own machinery. Every one of
-# them waits out the timelock after reaching quorum, so a capture is observable
-# before it takes effect.
-CONSTITUTIONAL_KINDS = (KIND_CHARTER_AMENDMENT, KIND_GOVERNANCE)
-VALID_PROPOSAL_KINDS = (KIND_GRANT, KIND_CHARTER_AMENDMENT, KIND_GOVERNANCE)
-GOV_FIELD_QUORUM = "QUORUM_BPS"
-GOV_FIELD_CEILING = "SPEND_CEILING_BPS"
-GOV_FIELD_SHARES = "MEMBER_SHARES"
-GOV_FIELD_RULES = "CHARTER_RULES"
-GOV_FIELD_EVIDENCE = "EVIDENCE_URLS"
-GOVERNANCE_FIELDS = (GOV_FIELD_QUORUM, GOV_FIELD_CEILING, GOV_FIELD_SHARES, GOV_FIELD_RULES, GOV_FIELD_EVIDENCE)
-# Hard constitutional limits. These are not policy and cannot be raised by a vote
-# or an amendment: a trust may make itself stricter, never looser than this.
-MIN_QUORUM_BPS = 2500
-MAX_SPEND_CEILING_BPS = 5000
-# A sanity bound against a nonsense allocation, not a security property. The real
-# limit on one member dominating is the share split itself, and a single member
-# holding everything is exactly the pluralism failure the README admits to.
-MAX_SHARES_PER_MEMBER = 1000000
-DEFAULT_AMENDMENT_DELAY = 3600
 
 VERDICT_PENDING = "PENDING"
 VERDICT_COMPLIANT = "COMPLIANT"
@@ -66,12 +45,6 @@ MAX_LOG = 500
 MAX_PROPOSAL_SCAN = 20
 EVIDENCE_CLIP = 4000
 RATIONALE_CLIP = 400
-# Substrings identifying which conservation bucket a payout belongs to. They are
-# matched against the payout memo inside _pay, so every outflow is attributed to
-# exactly one bucket and the sum is checkable.
-BUCKET_GRANT = "grant"
-BUCKET_SETTLE = "settlement"
-BUCKET_DISSOLUTION = "dissolution"
 ENTRY_CLIP = 1200
 BODY_CLIP = 4000
 CHARTER_CLIP = 8000
@@ -326,11 +299,6 @@ def _as_str_list(payload: dict, keys) -> list:
     return []
 
 
-def _now_unix() -> int:
-    """Seconds since the epoch, the same clock advance_cycle uses for the tick."""
-    return int(datetime.now(timezone.utc).timestamp())
-
-
 def _confidence_bucket(confidence: int) -> int:
     if confidence < 0:
         return 0
@@ -343,19 +311,7 @@ def _buckets_within_tolerance(leader_bucket: int, validator_bucket: int, toleran
     return abs(leader_bucket - validator_bucket) <= tolerance
 
 
-@allow_storage
-class Fideicommis(gl.Contract):
-    # Published so a deployment checker can assert these are the numbers, rather
-    # than trusting that a deployer read them somewhere. The hard limits are
-    # constants precisely because they are not adjustable; a checker that reads
-    # them from here can confirm the deployed bytecode was not tampered with.
-    CONSTITUTION = json.dumps({
-        "min_quorum_bps": MIN_QUORUM_BPS,
-        "max_spend_ceiling_bps": MAX_SPEND_CEILING_BPS,
-        "amendment_delay": DEFAULT_AMENDMENT_DELAY,
-        "constitutional_kinds": list(CONSTITUTIONAL_KINDS),
-        "governance_fields": list(GOVERNANCE_FIELDS),
-    }, sort_keys=True)
+class UnstoppableOrg(gl.Contract):
     org_name: str
     mission: str
     charter: str
@@ -395,21 +351,6 @@ class Fideicommis(gl.Contract):
     log_truncated: bool
     last_action: str
     last_rationale: str
-    # Everything below is APPENDED. GenLayer's storage layout is positional, so a
-    # field inserted in the middle would silently reinterpret every field after
-    # it. Append only.
-    lifetime_granted: u256
-    lifetime_settled: u256
-    lifetime_dissolved: u256
-    # Seconds a constitutional change must sit approved but not executed before it
-    # may be executed. This is the window in which members and auditors can see a
-    # captured trust about to hand itself over and react.
-    amendment_delay: u64
-    # When a constitutional proposal reached quorum and therefore became
-    # executable. The timelock is measured from this, not from submission, so a
-    # proposal that sat unvoted for a month does not execute instantly once
-    # approved.
-    op_ready_at: TreeMap[str, u64]
 
     def __init__(self, org_name: str, mission: str, charter: str, operator: str, evidence_urls: str):
         self.org_name = _clip(org_name, 120)
@@ -436,29 +377,10 @@ class Fideicommis(gl.Contract):
         self.status = STATUS_ACTIVE
         self.last_action = ACTION_HOLD
         self.log_truncated = False
-        self.lifetime_granted = u256(0)
-        self.lifetime_settled = u256(0)
-        self.lifetime_dissolved = u256(0)
-        # The founding numbers. Quorum and the spend ceiling are constitutional:
-        # set once here, then reachable only through a charter amendment that
-        # itself needs a member vote and the timelock.
-        self.amendment_delay = u64(DEFAULT_AMENDMENT_DELAY)
         for url in _parse_url_list(evidence_urls):
             self.evidence_urls.append(url)
-        # No upgrader is added here, and that is a decision rather than an omission.
-        #
-        # GenVM locks the root, code, locked_slots and upgraders slots automatically once
-        # __init__ returns. A contract that adds an address to `upgraders` in its constructor
-        # hands that address permanent code-replacement power: the list survives every
-        # upgrade, an upgrader can re-add itself, and the documented way to avoid that is to
-        # add nobody. This project previously did add the deployer, which meant every trust
-        # it ever deployed could have its code replaced by whoever deployed it — a power
-        # that was never listed among the captures, because it was never examined.
-        #
-        # The consequence is that `set_code_upgraders` below cannot work for anybody, because
-        # writing the upgraders slot requires already being an upgrader. That is why the
-        # method is gone rather than left to fail: a public method that always reverts is the
-        # same anti-pattern already removed twice in this contract.
+        root = gl.storage.Root.get()
+        root.upgraders.get().append(gl.message.sender_address)
         self._log({"event": "genesis", "org": self.org_name, "mission": self.mission})
 
     # ------------------------------------------------------------------
@@ -472,9 +394,9 @@ class Fideicommis(gl.Contract):
             raise gl.vm.UserError(f"{ERROR_EXPECTED} fund() must be called with GEN value")
         current = str(self.status)
         if current == STATUS_WINDING_DOWN:
-            raise gl.vm.UserError(f"{ERROR_EXPECTED} fideicommis is winding down and cannot take funds")
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} organization is winding down and cannot take funds")
         if current == STATUS_DISSOLVED:
-            raise gl.vm.UserError(f"{ERROR_EXPECTED} fideicommis is dissolved and cannot take funds")
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} organization is dissolved and cannot take funds")
         self.treasury = u256(int(self.treasury) + received)
         self.lifetime_inflow = u256(int(self.lifetime_inflow) + received)
         if current == STATUS_DORMANT:
@@ -488,47 +410,61 @@ class Fideicommis(gl.Contract):
         burn_per_cycle: int,
         keeper_reward: int,
         tick_interval: int,
+        quorum_bps: int,
+        spend_ceiling_bps: int,
     ) -> None:
-        """
-        Operational policy only: what the estate burns, what a keeper is paid, and
-        how often the cycle may run.
-
-        Quorum and the spend ceiling are deliberately NOT parameters here. They
-        used to be, which meant a single operator could raise the ceiling to
-        10000 bps and drop quorum to 1 bp in one call, then use the resulting
-        single-member quorum to vote through anything, including a charter that
-        removed the ceiling. Those two numbers are constitutional now: they are
-        fixed at genesis and only move through the amendment path, which needs a
-        member vote and then waits out the timelock.
-        """
         self._require_operator()
         if int(tick_interval) < 60:
             raise gl.vm.UserError(f"{ERROR_EXPECTED} tick_interval must be at least 60 seconds")
+        if int(quorum_bps) <= 0 or int(quorum_bps) > 10000:
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} quorum_bps must be within 1..10000")
+        if int(spend_ceiling_bps) <= 0 or int(spend_ceiling_bps) > 10000:
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} spend_ceiling_bps must be within 1..10000")
         if int(burn_per_cycle) < 0 or int(keeper_reward) < 0:
             raise gl.vm.UserError(f"{ERROR_EXPECTED} burn and keeper reward cannot be negative")
         self.burn_per_cycle = u256(burn_per_cycle)
         self.keeper_reward = u256(keeper_reward)
         self.tick_interval = u64(tick_interval)
+        self.quorum_bps = u256(quorum_bps)
+        self.spend_ceiling_bps = u256(spend_ceiling_bps)
         self._log({
             "event": "policy",
             "burn_per_cycle": str(burn_per_cycle),
             "keeper_reward": str(keeper_reward),
             "tick_interval": str(tick_interval),
-            "quorum_bps": str(int(self.quorum_bps)),
-            "spend_ceiling_bps": str(int(self.spend_ceiling_bps)),
+            "quorum_bps": str(quorum_bps),
+            "spend_ceiling_bps": str(spend_ceiling_bps),
         })
 
     @gl.public.write
     def set_evidence_urls(self, urls: str) -> None:
-        """
-        Removed as an operator power.
+        self._require_operator()
+        parsed = _parse_url_list(urls)
+        if len(parsed) == 0:
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} at least one https evidence url is required")
+        while len(self.evidence_urls) > 0:
+            self.evidence_urls.pop()
+        for url in parsed:
+            self.evidence_urls.append(url)
+        self._log({"event": "evidence_updated", "count": len(parsed)})
 
-        The evidence sources decide what the committee can see, so controlling
-        them is controlling the judgment. That was the fourth step of the capture
-        sequence: point the judge at sources that make anything look compliant. It
-        is a governance proposal now.
-        """
-        raise gl.vm.UserError(f"{ERROR_EXPECTED} evidence sources are constitutional, submit a GOVERNANCE proposal with EVIDENCE_URLS:<urls> instead")
+    @gl.public.write
+    def set_code_upgraders(self, upgraders: str) -> None:
+        self._require_operator()
+        addresses = []
+        for entry in str(upgraders).split(","):
+            candidate = entry.strip()
+            if candidate == "":
+                continue
+            addresses.append(_to_address(candidate))
+        if len(addresses) == 0:
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} at least one upgrader address is required")
+        root = gl.storage.Root.get()
+        existing = root.upgraders.get()
+        while len(existing) > 0:
+            existing.pop()
+        for address in addresses:
+            existing.append(address)
 
     # ------------------------------------------------------------------
     # membership
@@ -536,16 +472,18 @@ class Fideicommis(gl.Contract):
 
     @gl.public.write
     def set_member_shares(self, member: str, shares: int) -> None:
-        """
-        Removed as a power, not as a function.
-
-        This used to be operator-only, and it was the first step of every capture:
-        make yourself the sole member, then vote alone. Membership is now a
-        governance proposal, which needs a member vote and then waits out the
-        timelock before it can take effect. The method stays so the refusal is
-        explicit rather than a confusing "unknown method" at call time.
-        """
-        raise gl.vm.UserError(f"{ERROR_EXPECTED} membership is constitutional, submit a GOVERNANCE proposal with MEMBER_SHARES:MEMBER:SHARES instead")
+        self._require_operator()
+        account = _to_address(member)
+        if int(shares) < 0:
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} shares cannot be negative")
+        previous = int(self.member_shares.get(account, u256(0)))
+        if previous == 0 and int(shares) > 0:
+            self.members.append(account)
+        elif previous > 0 and int(shares) == 0:
+            self.members.remove(account)
+        self.member_shares[account] = u256(shares)
+        self.total_shares = u256(int(self.total_shares) - previous + int(shares))
+        self._log({"event": "shares", "member": str(account), "shares": str(shares)})
 
     # ------------------------------------------------------------------
     # charter: rulebook extraction and amendment
@@ -569,12 +507,9 @@ class Fideicommis(gl.Contract):
 
     @gl.public.write
     def clear_rules(self) -> None:
-        """
-        Removed as an operator power, for the same reason as set_member_shares:
-        wiping the rulebook is a constitutional act, and it is now a governance
-        proposal that needs a vote and the timelock.
-        """
-        raise gl.vm.UserError(f"{ERROR_EXPECTED} charter rules are constitutional, submit a GOVERNANCE proposal with CHARTER_RULES:clear instead")
+        self._require_operator()
+        while len(self.charter_rules) > 0:
+            self.charter_rules.pop()
 
     # ------------------------------------------------------------------
     # proposals
@@ -583,16 +518,14 @@ class Fideicommis(gl.Contract):
     @gl.public.write
     def submit_proposal(self, title: str, body: str, kind: str, amount_atto: int, recipient: str) -> str:
         self._require_live()
-        if kind not in VALID_PROPOSAL_KINDS:
-            raise gl.vm.UserError(f"{ERROR_EXPECTED} kind must be one of {', '.join(VALID_PROPOSAL_KINDS)}")
+        if kind != KIND_GRANT and kind != KIND_CHARTER_AMENDMENT:
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} kind must be {KIND_GRANT} or {KIND_CHARTER_AMENDMENT}")
         if kind == KIND_GRANT and _clip(recipient, 64) == "":
             raise gl.vm.UserError(f"{ERROR_EXPECTED} grant proposals require a recipient address")
         if int(amount_atto) < 0:
             raise gl.vm.UserError(f"{ERROR_EXPECTED} amount_atto cannot be negative")
-        if kind != KIND_GRANT and int(amount_atto) > 0:
-            raise gl.vm.UserError(f"{ERROR_EXPECTED} {kind} proposals must not request funds")
-        if kind == KIND_GOVERNANCE and self._governance_field_of(_clip(body, BODY_CLIP)) not in GOVERNANCE_FIELDS:
-            raise gl.vm.UserError(f"{ERROR_EXPECTED} governance body must be FIELD:VALUE where FIELD is one of {', '.join(GOVERNANCE_FIELDS)}")
+        if kind == KIND_CHARTER_AMENDMENT and int(amount_atto) > 0:
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} charter amendment proposals must not request funds")
         index = int(self.proposal_count) + 1
         proposal_id = "p" + str(index)
         self.proposals[proposal_id] = Proposal(
@@ -716,10 +649,6 @@ class Fideicommis(gl.Contract):
         else:
             self.proposal_rejecters[proposal_id].append(str(voter))
             self.proposals[proposal_id].rejections = u256(int(self.proposals[proposal_id].rejections) + 1)
-        # Stamped only for approving votes, and only the first time, so a
-        # constitutional change cannot have its delay restarted by more votes.
-        if bool(approve) and str(self.proposals[proposal_id].kind) in CONSTITUTIONAL_KINDS:
-            self._stamp_ready(proposal_id)
         self._log({"event": "vote", "id": proposal_id, "approve": bool(approve)})
 
     @gl.public.write
@@ -734,20 +663,7 @@ class Fideicommis(gl.Contract):
         if not self._quorum_met(proposal_id):
             raise gl.vm.UserError(f"{ERROR_EXPECTED} proposal {proposal_id} did not reach quorum")
 
-        kind = str(self.proposals[proposal_id].kind)
-        if kind in CONSTITUTIONAL_KINDS:
-            self._require_timelock(proposal_id)
-
-        if kind == KIND_GOVERNANCE:
-            self._apply_governance(proposal_id)
-            return
-
-        if kind == KIND_CHARTER_AMENDMENT:
-            # An amendment that carries no charter text would replace the
-            # constitution with an empty string, so it can never execute. The
-            # autonomous ADAPT path creates exactly such a proposal on purpose.
-            if _clip(str(self.proposals[proposal_id].body), BODY_CLIP) == "":
-                raise gl.vm.UserError(f"{ERROR_EXPECTED} amendment {proposal_id} carries no charter text, a member must author it")
+        if str(self.proposals[proposal_id].kind) == KIND_CHARTER_AMENDMENT:
             self.charter_history.append(_clip(str(self.charter), CHARTER_CLIP))
             self.charter = _clip(str(self.proposals[proposal_id].body), CHARTER_CLIP)
             self.charter_version = u256(int(self.charter_version) + 1)
@@ -768,7 +684,7 @@ class Fideicommis(gl.Contract):
             raise gl.vm.UserError(f"{ERROR_EXPECTED} amount {amount} exceeds policy ceiling {ceiling}")
         if amount > int(self.treasury):
             raise gl.vm.UserError(f"{ERROR_EXPECTED} treasury {int(self.treasury)} cannot cover {amount}")
-        self._pay(str(self.proposals[proposal_id].recipient), amount, "grant:" + proposal_id, BUCKET_GRANT)
+        self._pay(str(self.proposals[proposal_id].recipient), amount, "grant:" + proposal_id)
         self.proposals[proposal_id].executed = True
         self.executed_count = u256(int(self.executed_count) + 1)
         self._log({
@@ -803,7 +719,7 @@ class Fideicommis(gl.Contract):
 
         def leader_fn():
             retrieved = _fetch_source(url)
-            prompt = f"""You are the independent reviewer of work delivered under an autonomous fideicommis.
+            prompt = f"""You are the independent reviewer of work delivered under an autonomous organization.
 The work was commissioned with this title:
 --- COMMISSION ---
 {_clip(criteria, 1200)}
@@ -888,7 +804,7 @@ Return JSON only, with exactly these keys:
         if payout > int(self.treasury):
             raise gl.vm.UserError(f"{ERROR_EXPECTED} treasury cannot cover payout {payout}")
         if payout > 0:
-            self._pay(str(self.proposals[proposal_id].recipient), payout, "settlement:" + proposal_id, BUCKET_SETTLE)
+            self._pay(str(self.proposals[proposal_id].recipient), payout, "settlement:" + proposal_id)
         self.proposals[proposal_id].settled = True
         self.settled_count = u256(int(self.settled_count) + 1)
         self._log({"event": "delivery_settled", "id": proposal_id, "payout_atto": str(payout)})
@@ -901,7 +817,7 @@ Return JSON only, with exactly these keys:
     def advance_cycle(self) -> None:
         now = int(datetime.now(timezone.utc).timestamp())
         if str(self.status) != STATUS_ACTIVE:
-            raise gl.vm.UserError(f"{ERROR_EXPECTED} fideicommis is {str(self.status)}, not {STATUS_ACTIVE}")
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} organization is {str(self.status)}, not {STATUS_ACTIVE}")
         if now < int(self.next_tick_at):
             raise gl.vm.UserError(f"{ERROR_EXPECTED} next tick at {int(self.next_tick_at)}, now {now}")
 
@@ -918,13 +834,13 @@ Return JSON only, with exactly these keys:
 
         def leader_fn():
             evidence = _collect_evidence(urls)
-            prompt = f"""You are the autonomous executive of a permanently funded fideicommis.
+            prompt = f"""You are the autonomous executive of a permanently funded organization.
 Its mission must be pursued for as long as the treasury lasts. You choose exactly one action per cycle.
 
 MISSION:
 {mission_text}
 
-CHARTER CONSTRAINTS (the fideicommis may only act within these):
+CHARTER CONSTRAINTS (the organization may only act within these):
 {_clip(charter_text, 3000)}
 
 MACHINE-READABLE CHARTER RULES:
@@ -950,7 +866,7 @@ Choose exactly one action:
 - "FUND": pay a grant proposal that is already marked compliant, not executed, and carries enough member approvals. Use that proposal_id.
 - "ADAPT": the mission, the constraints, or the environment changed, so the charter should be amended. Write the full proposed replacement charter in "rationale".
 - "HOLD": nothing deserves action right now. Prefer this over inventing work.
-- "WIND_DOWN": the fideicommis can no longer make progress against its mission and should begin winding down. Only choose this when the evidence supports it.
+- "WIND_DOWN": the organization can no longer make progress against its mission and should begin winding down. Only choose this when the evidence supports it.
 
 Rules you must respect:
 - Never choose SETTLE or FUND with a proposal_id whose listed state does not match.
@@ -1018,14 +934,9 @@ Return JSON only, with exactly these keys:
 
     @gl.public.write
     def wind_down(self) -> None:
-        # Deliberately still an operator power, and this is the argument for it.
-        # Winding down can only start, and only the remainder goes to the operator
-        # when the estate is empty. The operator cannot fund themselves from a
-        # live trust: a grant still needs a member vote and stays under the
-        # ceiling, and dissolving requires the treasury to already be at zero.
         self._require_operator()
         if str(self.status) != STATUS_ACTIVE:
-            raise gl.vm.UserError(f"{ERROR_EXPECTED} only an active fideicommis can wind down")
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} only an active organization can wind down")
         self.status = STATUS_WINDING_DOWN
         self._log({"event": "wind_down_requested"})
 
@@ -1033,47 +944,23 @@ Return JSON only, with exactly these keys:
     def dissolve(self) -> None:
         self._require_operator()
         if str(self.status) != STATUS_WINDING_DOWN:
-            raise gl.vm.UserError(f"{ERROR_EXPECTED} fideicommis must be winding down first")
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} organization must be winding down first")
         remainder = int(self.treasury)
         if remainder > 0:
-            self._pay(str(self.operator), remainder, "dissolution", BUCKET_DISSOLUTION)
+            self._pay(str(self.operator), remainder, "dissolution")
         self.status = STATUS_DISSOLVED
         self._log({"event": "dissolved", "remainder_atto": str(remainder)})
 
-    # There is deliberately no `upgrade` method. This contract has no code-replacement
-    # path: no upgrader is added at deployment, so GenVM's locked code slot refuses any
-    # write to it, for everyone, irreversibly. An `upgrade` method here would be callable by
-    # nobody, which is the same dead public surface removed twice above. `get_code_upgraders`
-    # exists instead, so a reader can see that fact about any deployment rather than take it
-    # on trust — including the deployments that predate this decision and are not frozen.
+    @gl.public.write
+    def upgrade(self, new_code: bytes) -> None:
+        root = gl.storage.Root.get()
+        code = root.code.get()
+        code.truncate()
+        code.extend(new_code)
 
     # ------------------------------------------------------------------
     # views
     # ------------------------------------------------------------------
-
-    @gl.public.view
-    def get_code_upgraders(self) -> str:
-        """
-        Whether the code at this address can be replaced, and by whom.
-
-        GenLayer exposes no code hash, so the code itself is the only identity a reader can
-        check. The question this answers is different and just as necessary: a contract can
-        be perfectly readable and still have its code swapped by an address nobody can see,
-        because `upgraders` lives in the root slot rather than in this contract's storage.
-
-        Returns a JSON array. Empty means frozen: GenVM locked the code slot at deployment
-        and there is no address on the list, so nobody can write it. A non-empty array names
-        the addresses that can replace the code of this contract in place, with storage
-        preserved, and that list survives every upgrade — an upgrader can re-add itself, so
-        one entry is a permanent power rather than a one-time permission.
-
-        Deployments made before the constructor stopped adding the deployer report that
-        deployer here. This is the honest rendering of a real property, not a warning about
-        a hypothetical.
-        """
-        root = gl.storage.Root.get()
-        entries = root.upgraders.get()
-        return json.dumps([str(entry) for entry in entries])
 
     @gl.public.view
     def get_org_name(self) -> str:
@@ -1108,28 +995,10 @@ Return JSON only, with exactly these keys:
 
     @gl.public.view
     def get_lifetime_flow(self) -> str:
-        burn = int(self.lifetime_outflow) - int(self.lifetime_granted) - int(self.lifetime_settled) - int(self.lifetime_dissolved)
-        conserved = (
-            int(self.treasury)
-            + int(self.lifetime_granted)
-            + int(self.lifetime_settled)
-            + int(self.lifetime_dissolved)
-            + int(self.total_keeper_paid)
-            + burn
-        )
         return json.dumps({
             "inflow_atto": int(self.lifetime_inflow),
             "outflow_atto": int(self.lifetime_outflow),
             "keeper_paid_atto": int(self.total_keeper_paid),
-            "granted_atto": int(self.lifetime_granted),
-            "settled_atto": int(self.lifetime_settled),
-            "dissolved_atto": int(self.lifetime_dissolved),
-            "burned_atto": burn,
-            "treasury_atto": int(self.treasury),
-            # The identity a test can falsify: every attoGEN that entered is in
-            # the treasury, or left as a grant, a settlement, a dissolution
-            # remainder, a burn, or a keeper reward.
-            "conserved_atto": conserved,
         }, sort_keys=True)
 
     @gl.public.view
@@ -1147,33 +1016,6 @@ Return JSON only, with exactly these keys:
     @gl.public.view
     def get_next_tick_at(self) -> u64:
         return u64(self.next_tick_at)
-
-    @gl.public.view
-    def get_constitution(self) -> str:
-        """
-        The immutable rules about the rules, as data.
-
-        Deliberately separate from get_constitutional_state, which reports numbers
-        a vote can change. This returns only what cannot change, so a caller can
-        assert on it and be sure nothing has moved underneath the check.
-        """
-        return str(self.CONSTITUTION)
-
-    @gl.public.view
-    def get_constitutional_state(self) -> str:
-        """
-        The numbers that a vote may change but never past a hard limit, plus the
-        delay any constitutional change has to sit through once approved.
-        """
-        return json.dumps({
-            "quorum_bps": int(self.quorum_bps),
-            "spend_ceiling_bps": int(self.spend_ceiling_bps),
-            "min_quorum_bps": MIN_QUORUM_BPS,
-            "max_spend_ceiling_bps": MAX_SPEND_CEILING_BPS,
-            "amendment_delay": int(self.amendment_delay),
-            "charter_version": int(self.charter_version),
-            "total_shares": int(self.total_shares),
-        }, sort_keys=True)
 
     @gl.public.view
     def get_policy(self) -> str:
@@ -1240,7 +1082,6 @@ Return JSON only, with exactly these keys:
             "delivery_verdict": str(proposal.delivery_verdict),
             "delivery_score": int(proposal.delivery_score),
             "delivery_rationale": str(proposal.delivery_rationale),
-            "body": str(proposal.body),
         }, sort_keys=True)
 
     @gl.public.view
@@ -1301,9 +1142,9 @@ Return JSON only, with exactly these keys:
 
     def _require_live(self) -> None:
         if str(self.status) == STATUS_DISSOLVED:
-            raise gl.vm.UserError(f"{ERROR_EXPECTED} fideicommis is dissolved")
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} organization is dissolved")
         if str(self.status) == STATUS_WINDING_DOWN:
-            raise gl.vm.UserError(f"{ERROR_EXPECTED} fideicommis is winding down")
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} organization is winding down")
 
     def _handle_leader_error(self, leaders_res, leader_fn) -> bool:
         leader_message = ""
@@ -1336,143 +1177,6 @@ Return JSON only, with exactly these keys:
         except Exception:
             return False
         return bool(compare(leaders_res.calldata, mine))
-
-    def _governance_field_of(self, text: str) -> str:
-        """The FIELD half of a 'FIELD:VALUE' governance body, or "" if malformed."""
-        stripped = str(text).strip()
-        parts = stripped.split(":")
-        if len(parts) < 2:
-            return ""
-        return parts[0].strip()
-
-    def _require_timelock(self, proposal_id: str) -> None:
-        """
-        Refuse a constitutional change until it has sat approved for the delay.
-
-        The clock starts when the proposal reached quorum, which is stamped in
-        cast_vote. Measuring from submission instead would let a proposal that sat
-        unvoted for a month execute the instant it was approved, and measuring
-        from execution would be no delay at all.
-        """
-        now = _now_unix()
-        ready_at = int(self.op_ready_at.get(proposal_id, u64(0)))
-        if ready_at == 0:
-            raise gl.vm.UserError(f"{ERROR_EXPECTED} {proposal_id} never reached quorum, so its delay has not started")
-        if now < ready_at + int(self.amendment_delay):
-            remaining = ready_at + int(self.amendment_delay) - now
-            raise gl.vm.UserError(f"{ERROR_EXPECTED} {proposal_id} is timelocked for {remaining}s more")
-
-    def _stamp_ready(self, proposal_id: str) -> None:
-        """
-        Record when a proposal first reached quorum, once. Kept separate from
-        _quorum_met because the timelock must not restart if more votes arrive.
-        """
-        if int(self.op_ready_at.get(proposal_id, u64(0))) != 0:
-            return
-        if self._quorum_met(proposal_id):
-            self.op_ready_at[proposal_id] = u64(_now_unix())
-
-    def _apply_governance(self, proposal_id: str) -> None:
-        """
-        Apply a governance change that the members voted for.
-
-        The body is a small, strictly parsed instruction rather than prose, so
-        nothing a model wrote can reach this. Every value is re-validated here and
-        not trusted from the proposal: the vote authorises an intent, and the
-        contract decides whether that intent is legal.
-        """
-        # MEMBER_SHARES carries its own separator inside the value, so the field
-        # is taken off the front and everything after the first colon is the
-        # value rather than assuming exactly two parts.
-        text = str(self.proposals[proposal_id].body).strip()
-        colon = text.find(":")
-        if colon <= 0 or colon + 1 >= len(text):
-            raise gl.vm.UserError(f"{ERROR_EXPECTED} governance {proposal_id} must be 'FIELD:VALUE'")
-        field = text[:colon].strip()
-        value = text[colon + 1:].strip()
-
-        if field == GOV_FIELD_QUORUM:
-            quorum = _parse_int_text(value)
-            if quorum < MIN_QUORUM_BPS or quorum > 10000:
-                raise gl.vm.UserError(f"{ERROR_EXPECTED} quorum must be within {MIN_QUORUM_BPS}..10000")
-            previous = int(self.quorum_bps)
-            self.quorum_bps = u256(quorum)
-            self.proposals[proposal_id].executed = True
-            self.executed_count = u256(int(self.executed_count) + 1)
-            self._log({"event": "quorum_changed", "id": proposal_id, "from_bps": previous, "to_bps": quorum})
-            return
-
-        if field == GOV_FIELD_CEILING:
-            ceiling = _parse_int_text(value)
-            if ceiling <= 0 or ceiling > MAX_SPEND_CEILING_BPS:
-                raise gl.vm.UserError(f"{ERROR_EXPECTED} spend ceiling must be within 1..{MAX_SPEND_CEILING_BPS}")
-            previous = int(self.spend_ceiling_bps)
-            self.spend_ceiling_bps = u256(ceiling)
-            self.proposals[proposal_id].executed = True
-            self.executed_count = u256(int(self.executed_count) + 1)
-            self._log({"event": "ceiling_changed", "id": proposal_id, "from_bps": previous, "to_bps": ceiling})
-            return
-
-        if field == GOV_FIELD_SHARES:
-            # The address and the share count are separated by a second colon, so
-            # this is split once from the right.
-            sep = value.rfind(":")
-            if sep <= 0 or sep + 1 >= len(value):
-                raise gl.vm.UserError(f"{ERROR_EXPECTED} shares must be 'MEMBER:SHARES'")
-            bits = [value[:sep].strip(), value[sep + 1:].strip()]
-            if len(bits) != 2:
-                raise gl.vm.UserError(f"{ERROR_EXPECTED} shares must be 'MEMBER:SHARES'")
-            account = _to_address(bits[0].strip())
-            shares = _parse_int_text(bits[1].strip())
-            if shares < 0 or shares > MAX_SHARES_PER_MEMBER:
-                raise gl.vm.UserError(f"{ERROR_EXPECTED} shares must be within 0..{MAX_SHARES_PER_MEMBER}")
-            if account not in self.members:
-                if shares == 0:
-                    raise gl.vm.UserError(f"{ERROR_EXPECTED} {account} is not a member, so their shares are already 0")
-                self.members.append(account)
-            # Computed before anything is written, so a rejected change cannot
-            # leave the member list already stripped.
-            remaining = 0
-            for entry in self.members:
-                value = 0 if str(entry) == str(account) else int(self.member_shares.get(Address(str(entry)), u256(0)))
-                remaining = remaining + value
-            if remaining == 0:
-                raise gl.vm.UserError(f"{ERROR_EXPECTED} shares must not leave the fideicommis with no voting members")
-            if shares == 0:
-                self.member_shares.pop(account, default=None)
-                self.members.remove(account)
-            else:
-                self.member_shares[account] = u256(shares)
-            self.total_shares = u256(remaining)
-            self.proposals[proposal_id].executed = True
-            self.executed_count = u256(int(self.executed_count) + 1)
-            self._log({"event": "shares_changed", "id": proposal_id, "member": str(account), "shares": str(shares)})
-            return
-
-        if field == GOV_FIELD_EVIDENCE:
-            parsed = _parse_url_list(value)
-            if len(parsed) == 0:
-                raise gl.vm.UserError(f"{ERROR_EXPECTED} at least one https evidence url is required")
-            while len(self.evidence_urls) > 0:
-                self.evidence_urls.pop()
-            for url in parsed:
-                self.evidence_urls.append(url)
-            self.proposals[proposal_id].executed = True
-            self.executed_count = u256(int(self.executed_count) + 1)
-            self._log({"event": "evidence_updated", "id": proposal_id, "count": len(parsed)})
-            return
-
-        if field == GOV_FIELD_RULES:
-            if value.strip().lower() != "clear":
-                raise gl.vm.UserError(f"{ERROR_EXPECTED} rules governance only supports 'clear'")
-            while len(self.charter_rules) > 0:
-                self.charter_rules.pop()
-            self.proposals[proposal_id].executed = True
-            self.executed_count = u256(int(self.executed_count) + 1)
-            self._log({"event": "rules_cleared", "id": proposal_id})
-            return
-
-        raise gl.vm.UserError(f"{ERROR_EXPECTED} unknown governance field {field}")
 
     def _log(self, entry: dict) -> None:
         if len(self.mission_log) >= MAX_LOG:
@@ -1522,37 +1226,12 @@ Return JSON only, with exactly these keys:
             approved_shares = approved_shares + int(self.member_shares.get(Address(str(entry)), u256(0)))
         return (approved_shares * 10000) // total >= int(self.quorum_bps)
 
-    def _pay(self, recipient: str, amount: int, memo: str, bucket: str) -> None:
-        """
-        Move value out of the estate.
-
-        Every attoGEN that leaves is counted in exactly one bucket so that
-        inflow == treasury + granted + settled + keeper_paid + burned is a
-        checkable identity rather than a claim. The bucket is an explicit
-        argument rather than parsed out of the memo, so a new payout path has to
-        declare where it belongs and cannot quietly go untracked.
-        """
-        # Validated before any value moves, so an unbucketed payout cannot debit
-        # the treasury and then fail its way out of the identity.
-        if bucket not in (BUCKET_GRANT, BUCKET_SETTLE, BUCKET_DISSOLUTION):
-            raise gl.vm.UserError(f"{ERROR_EXPECTED} payout {memo} has no conservation bucket")
+    def _pay(self, recipient: str, amount: int, memo: str) -> None:
         address = _to_address(recipient)
         self.treasury = u256(int(self.treasury) - amount)
         self.lifetime_outflow = u256(int(self.lifetime_outflow) + amount)
-        if bucket == BUCKET_GRANT:
-            self.lifetime_granted = u256(int(self.lifetime_granted) + amount)
-        elif bucket == BUCKET_SETTLE:
-            self.lifetime_settled = u256(int(self.lifetime_settled) + amount)
-        else:
-            self.lifetime_dissolved = u256(int(self.lifetime_dissolved) + amount)
         _ChainAccount(address).emit_transfer(value=u256(amount))
-        self._log({
-            "event": "payout",
-            "to": str(address),
-            "amount_atto": str(amount),
-            "memo": memo,
-            "bucket": bucket,
-        })
+        self._log({"event": "payout", "to": str(address), "amount_atto": str(amount), "memo": memo})
 
     def _proposal_dashboard(self) -> str:
         rows = []
@@ -1587,10 +1266,6 @@ Return JSON only, with exactly these keys:
             "delivery_payout": int(proposal.delivery_payout),
             "settled": bool(proposal.settled),
             "violations": violations,
-            # Bounded on purpose: this feeds the advance_cycle prompt, and a
-            # charter amendment body is the one field that decides what the
-            # constitution becomes. An auditor reads it via get_proposal_audit.
-            "body_len": len(_clip(str(proposal.body), BODY_CLIP)),
         }, sort_keys=True)
 
     def _recent_log(self, count: int) -> str:
@@ -1609,23 +1284,9 @@ Return JSON only, with exactly these keys:
         share_bps = 0
         if treasury > 0:
             share_bps = (amount * 10000) // treasury
-        procedure = ""
-        if kind == KIND_CHARTER_AMENDMENT:
-            procedure = """
-THIS PROPOSAL REWRITES THE CHARTER ITSELF.
-Assess it against the charter currently in force, not against the charter it proposes.
-A rule such as "changing any of these rules requires the same approval process as an
-ordinary grant" constrains the PROCESS, not the substance: it means an amendment is
-judged by this assessment, then reaches the same quorum, and is then executed the same
-way an ordinary grant is. It does not mean the amendment must itself satisfy the
-substantive requirements that apply to grants. In particular, an amendment does not
-have to name a public URL, does not have to fit the per grant ceiling, and does not
-have to be work anyone would be paid to deliver. What it must satisfy is any rule that
-constrains how the rules may be changed.
-"""
-        return f"""You are the compliance judge of an autonomous fideicommis.
+        return f"""You are the compliance judge of an autonomous organization.
 Several validators reach this conclusion independently, so decide from the charter itself, not from style or tone.
-{procedure}
+
 MISSION:
 {mission_text}
 
@@ -1667,7 +1328,7 @@ Return JSON only, with exactly these keys:
 
     def _derive_rules(self, charter_text: str, mission_text: str) -> dict:
         def leader_fn():
-            prompt = f"""You are compiling a machine-checkable rulebook for an autonomous fideicommis.
+            prompt = f"""You are compiling a machine-checkable rulebook for an autonomous organization.
 Its mission is:
 {mission_text}
 
@@ -1675,7 +1336,7 @@ Its charter is:
 {_clip(charter_text, 6000)}
 
 Extract the charter's binding obligations as a numbered rulebook. Each rule must be a single,
-self-contained, checkable statement of what the fideicommis may or may not do, phrased so that a
+self-contained, checkable statement of what the organization may or may not do, phrased so that a
 proposal can be tested against it. Ignore descriptive or aspirational sentences that create no
 obligation. Produce between 3 and {MAX_RULES} rules.
 
@@ -1775,7 +1436,7 @@ Return JSON only:
         self.last_rationale = detail
 
         # An empty treasury always wins over the chosen action. Winding down
-        # exists to distribute a remainder to the operator, so a fideicommis
+        # exists to distribute a remainder to the operator, so an organization
         # that has just run out of money has nothing to wind down. It sleeps
         # instead, which keeps the promise that any later funding revives it.
         if int(self.treasury) <= 0:
@@ -1803,7 +1464,7 @@ Return JSON only:
         ceiling = int(self._spend_ceiling_atto())
         if payable > ceiling or payable > int(self.treasury):
             return False
-        self._pay(str(self.proposals[proposal_id].recipient), payable, "autonomous_fund:" + proposal_id, BUCKET_GRANT)
+        self._pay(str(self.proposals[proposal_id].recipient), payable, "autonomous_fund:" + proposal_id)
         self.proposals[proposal_id].executed = True
         self.executed_count = u256(int(self.executed_count) + 1)
         return True
@@ -1821,25 +1482,12 @@ Return JSON only:
         if payable > int(self.treasury):
             return False
         if payable > 0:
-            self._pay(str(self.proposals[proposal_id].recipient), payable, "autonomous_settle:" + proposal_id, BUCKET_SETTLE)
+            self._pay(str(self.proposals[proposal_id].recipient), payable, "autonomous_settle:" + proposal_id)
         self.proposals[proposal_id].settled = True
         self.settled_count = u256(int(self.settled_count) + 1)
         return True
 
     def _action_adapt(self, proposed_charter: str) -> str:
-        """
-        Record the model's *suggestion* that the charter should change, and
-        nothing else.
-
-        The suggestion used to be written straight into the proposal body, which
-        made an unvalidated piece of model prose the text that would later be
-        voted on and become the constitution. Two validators could agree on
-        ADAPT while describing completely different charters, and the text they
-        never checked was the text that survived consensus. So the prose is
-        logged as an advisory note and the proposal body starts empty: an
-        autonomous cycle can raise the question, and only a member's own
-        submission can answer it with actual charter text.
-        """
         text = _clip(proposed_charter, BODY_CLIP)
         if len(text) < 40:
             return ACTION_HOLD
@@ -1847,8 +1495,8 @@ Return JSON only:
         proposal_id = "a" + str(index)
         self.proposals[proposal_id] = Proposal(
             proposer=gl.message.sender_address,
-            title="Autonomous charter adaptation (needs member-authored text)",
-            body="",
+            title="Autonomous charter adaptation",
+            body=text,
             kind=KIND_CHARTER_AMENDMENT,
             amount_atto=u256(0),
             recipient="",
@@ -1872,12 +1520,4 @@ Return JSON only:
         self.proposal_rejecters[proposal_id] = []
         self.proposal_order.append(proposal_id)
         self.proposal_count = u256(index)
-        # Advisory only. This is where the model's suggestion is preserved for a
-        # human to read, and it is deliberately not reachable from the
-        # assessment prompt or from the charter that execute_proposal installs.
-        self._log({
-            "event": "adaptation_suggested",
-            "id": proposal_id,
-            "suggestion": text,
-        })
         return ACTION_ADAPT
