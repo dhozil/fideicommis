@@ -85,18 +85,21 @@ export function Decision({
   proposal,
   audit,
   state,
-  members,
-quorum,
-    trust,
-    hasRules,
-  }: {
-    proposal: Proposal;
-    audit?: ProposalAudit;
-    state: ConstitutionalState;
-    members: Member[];
-    quorum: boolean | null;
-    /** Whether the charter's rulebook has been derived. Gates `assess_proposal`. */
-    hasRules: boolean;
+members,
+  quorum,
+  trust,
+  hasRules,
+  missing,
+}: {
+  proposal: Proposal;
+  audit?: ProposalAudit;
+  state: ConstitutionalState;
+  members: Member[];
+  quorum: boolean | null;
+  /** Whether the charter's rulebook has been derived. Gates `assess_proposal`. */
+  hasRules: boolean;
+  /** Writes this deployment does not have. Empty means every button may be offered. */
+  missing?: string[];
   /** The trust's own address, needed by every write. */
   trust: string;
 }) {
@@ -250,6 +253,7 @@ quorum,
         )}
         quorumMet={quorum === true}
         hasRules={hasRules}
+        missing={missing}
       />
 
       {audit?.rationale ? (
@@ -283,6 +287,7 @@ export function DecisionList({
   members,
   trust,
   hasRules,
+  missing,
 }: {
   proposals: Proposal[];
   audits: Record<string, ProposalAudit>;
@@ -291,6 +296,8 @@ export function DecisionList({
   trust: string;
   /** Whether the charter's rulebook has been derived. Gates `assess_proposal`. */
   hasRules: boolean;
+  /** Writes this deployment does not have. Empty means every button may be offered. */
+  missing?: string[];
 }) {
   if (!proposals.length) {
     return (
@@ -319,6 +326,7 @@ export function DecisionList({
           quorum={quorum}
           trust={trust}
           hasRules={hasRules}
+          missing={missing}
         />
       ))}
     </div>

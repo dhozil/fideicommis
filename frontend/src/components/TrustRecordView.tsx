@@ -267,6 +267,7 @@ export function TrustRecordView({ address }: { address: string }) {
               trust={record.address}
               hasRules={record.rules.length > 0}
               policy={record.policy}
+              missing={record.missingWrites}
             />
           </div>
           <div className="panel">
@@ -328,6 +329,7 @@ export function TrustRecordView({ address }: { address: string }) {
             members={record.members}
             trust={record.address}
             hasRules={record.rules.length > 0}
+            missing={record.missingWrites}
           />
         </section>
       </div>

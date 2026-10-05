@@ -2,6 +2,7 @@ import "server-only";
 
 import { readJSON, readMany, parseView, RateLimitedError } from "./genlayer";
 import { isAddress } from "./address";
+import { capabilitiesOf } from "./capabilities";
 import type {
   CharterRule,
   ConstitutionalState,
@@ -263,6 +264,12 @@ export async function readTrust(address: string): Promise<TrustRecord> {
     );
   }
 
+  // Asked once per address, not once per render, and never on the critical path to a first
+  // paint: `capabilitiesOf` is a single cached schema call whose answer cannot change,
+  // because the network cannot upgrade a contract. It runs after the record is assembled so
+  // a node that is slow to answer a schema does not delay the figures.
+  const capabilities = await capabilitiesOf(addr);
+
   return {
     address: addr,
     name: String(summary.name),
@@ -296,6 +303,8 @@ export async function readTrust(address: string): Promise<TrustRecord> {
       constitution?.min_quorum_bps === state?.min_quorum_bps &&
       constitution?.max_spend_ceiling_bps === state?.max_spend_ceiling_bps,
     degraded: degraded.length ? degraded.join(" · ") : null,
+    missingWrites: capabilities.missing,
+    capabilitiesVerified: capabilities.verified,
   };
 }
 

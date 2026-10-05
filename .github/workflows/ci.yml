@@ -344,6 +344,17 @@ jobs:
       - name: the chain is not in the path to a first paint
         run: npx --yes tsx@4 tests/check_render_path.mts
 
+      # Studionet cannot upgrade a contract, so a trust deployed from an earlier source is
+      # missing whatever the contract gained since, and a button for a method that is not
+      # there fails with a node refusal that does not name the method. Measured: all three
+      # listed deployments carry every write, so nothing is hidden from them today — the
+      # addresses this protects are the ones nobody listed. Two obvious ways of finding a
+      # deployment's methods were tried and both fail confidently rather than loudly: reading
+      # a write as a view answers the same as a method invented on the spot, and the SDK's
+      # schema call errors node-side. Both dead ends are asserted alongside the working one.
+      - name: no button is offered for a method the deployment lacks
+        run: npx --yes tsx@4 tests/check_capabilities.mts
+
       # Negative caching is the one change here that could make the reader lie: a
       # remembered "this node has no record of it", replayed after the transaction
       # settled, would report an absence for something real. Three ways that could go

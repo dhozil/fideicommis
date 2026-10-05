@@ -146,6 +146,18 @@ export interface TrustRecord {
   constitutionConsistent: boolean;
   /** Set when something could not be read, so the page can say which call failed. */
   degraded: string | null;
+  /**
+   * Writes this deployment does not have.
+   *
+   * Studionet cannot upgrade a contract, so a trust deployed from an earlier source is
+   * missing whatever the contract gained since. Offering a button for a method that is not
+   * there produces a node refusal that does not name the method, so the reader asks instead.
+   * See `lib/capabilities.ts` — including the two obvious ways of finding out that do not
+   * work, one of which reports every method as missing.
+   */
+  missingWrites: string[];
+  /** False when the probe failed, so `missingWrites` is empty because nothing was ruled out. */
+  capabilitiesVerified: boolean;
 }
 
 /**

@@ -52,6 +52,7 @@ export function ProposalActions({
   isMember,
   quorumMet,
   hasRules,
+  missing,
 }: {
   trust: string;
   proposal: Proposal;
@@ -59,6 +60,13 @@ export function ProposalActions({
   account?: string;
   /** Whether the charter's rulebook has been derived. `assess_proposal` refuses without it. */
   hasRules: boolean;
+  /**
+   * Writes this deployment does not have. Studionet cannot upgrade a contract, so a trust
+   * deployed before `assess_proposal` existed cannot be asked to judge at all. Empty means
+   * every button may be offered, which is also what an unverified probe reports — see
+   * `lib/capabilities.ts`.
+   */
+  missing?: string[];
   isMember: boolean;
   /** Whether enough shares voted for quorum. */
   quorumMet: boolean;
@@ -88,7 +96,8 @@ export function ProposalActions({
   // so the gate is only the two things the contract itself refuses on: no rulebook yet,
   // or a verdict that is no longer PENDING. Both live in `gatingFor` so they are tested.
   const buttons: WriteButton[] = [];
-  if (gating.canAssess) {
+  const absent = new Set(missing ?? []);
+  if (gating.canAssess && !absent.has("assess_proposal")) {
     buttons.push({
       action: "assess",
       label: "Ask the committee to judge",

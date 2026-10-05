@@ -33,16 +33,26 @@ export function RulesPanel({
   trust,
   hasRules,
   policy,
+  missing = [],
 }: {
   trust: string;
   /** Whether `get_charter_rules` returned anything for this charter version. */
   hasRules: boolean;
   policy: { burn_per_cycle: number; keeper_reward: number; tick_interval: number };
+  /**
+   * Writes this deployment does not have. Studionet cannot upgrade a contract, so a trust
+   * deployed before a method existed is missing it, and a button for it fails at the node
+   * with a message that does not name the method. Omitted means "offer everything", which is
+   * what an unverified probe reports — see `lib/capabilities.ts`.
+   */
+  missing?: string[];
 }) {
   const [burn, setBurn] = useState(String(policy.burn_per_cycle ?? ""));
   const [keeper, setKeeper] = useState(String(policy.keeper_reward ?? ""));
   const [tick, setTick] = useState(String(policy.tick_interval ?? ""));
   const [upgraders, setUpgraders] = useState("");
+
+  const absent = new Set(missing);
 
   const parsedBurn = parseGen(burn);
   const parsedKeeper = parseGen(keeper);
@@ -70,7 +80,7 @@ export function RulesPanel({
 
   const buttons: WriteButton[] = [];
 
-  if (!hasRules) {
+  if (!hasRules && !absent.has("bootstrap_rules")) {
     buttons.push({
       action: "bootstrap",
       label: "Derive the rulebook",
@@ -79,28 +89,34 @@ export function RulesPanel({
     });
   }
 
-  buttons.push({
-    action: "policy",
-    label: "Set the policy",
-    busyLabel: "Setting…",
-    tone: "quiet",
-    disabled: policyProblem !== null,
-    reason: policyProblem ?? "Operator only. Anyone else gets a refusal, not a change.",
-    onRun: () =>
-      setPolicy(trust, parsedBurn ?? 0n, parsedKeeper ?? 0n, parsedTick, undefined, undefined),
-  });
+  if (!absent.has("set_policy")) {
+    buttons.push({
+      action: "policy",
+      label: "Set the policy",
+      busyLabel: "Setting…",
+      tone: "quiet",
+      disabled: policyProblem !== null,
+      reason: policyProblem ?? "Operator only. Anyone else gets a refusal, not a change.",
+      onRun: () =>
+        setPolicy(trust, parsedBurn ?? 0n, parsedKeeper ?? 0n, parsedTick, undefined, undefined),
+    });
+  }
 
-  buttons.push({
-    action: "upgraders",
-    label: "Name the code upgraders",
-    busyLabel: "Naming…",
-    tone: "quiet",
-    disabled: !upgradersList.length || upgradersProblem !== null,
-    reason:
-      upgradersProblem ??
-      (!upgradersList.length ? "Comma-separated addresses." : "Operator only. Anyone else gets a refusal, not a change."),
-    onRun: () => setCodeUpgraders(trust, upgradersList.join(","), undefined, undefined),
-  });
+  if (!absent.has("set_code_upgraders")) {
+    buttons.push({
+      action: "upgraders",
+      label: "Name the code upgraders",
+      busyLabel: "Naming…",
+      tone: "quiet",
+      disabled: !upgradersList.length || upgradersProblem !== null,
+      reason:
+        upgradersProblem ??
+        (!upgradersList.length
+          ? "Comma-separated addresses."
+          : "Operator only. Anyone else gets a refusal, not a change."),
+      onRun: () => setCodeUpgraders(trust, upgradersList.join(","), undefined, undefined),
+    });
+  }
 
   return (
     <WritePanel buttons={buttons}>
