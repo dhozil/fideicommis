@@ -14,6 +14,7 @@ import sys
 README = pathlib.Path("README.md").read_text(encoding="utf-8")
 FINDINGS = pathlib.Path("FINDINGS.md").read_text(encoding="utf-8")
 CONTRACT = pathlib.Path("contracts/fideicommis.py").read_text(encoding="utf-8")
+ROOT = pathlib.Path(".")
 
 failures = []
 notes = []
@@ -38,20 +39,43 @@ def count_storage_fields(text):
     return len(re.findall(r"^    (\w+):\s*\S", body, re.M))
 
 
+def count_direct_tests():
+    """
+    Direct-mode test functions, counted rather than remembered.
+
+    This was the literal `117` while the suite had grown to 121 cases, and the check passed
+    the whole time — it was asserting that both documents agreed with each other about a
+    number neither of them re-derived. A figure pinned in prose is a figure that goes stale
+    quietly, which is the same failure as the fixed storage layout having once been described
+    only in a comment.
+
+    Functions, not cases: several tests are parameterised over the contract's storage fields
+    and sources, so pytest collects more cases than there are functions. The case count is
+    not derivable without running pytest, so it is not pinned — pinning it would reintroduce
+    exactly the drift this replaces.
+    """
+    total = 0
+    for path in sorted(ROOT.glob("tests/*.py")):
+        total += len(re.findall(r"^def test_", path.read_text(encoding="utf-8"), re.M))
+    return total
+
+
 print("=== figures that must agree across the documents ===")
 
 methods = count_declaration_methods(CONTRACT)
 views = len(re.findall(r"@gl\.public\.view", CONTRACT))
 writes = len(re.findall(r"@gl\.public\.write", CONTRACT))
 fields = count_storage_fields(CONTRACT)
+direct_tests = count_direct_tests()
 
 print(f"  the contract actually has: {methods} methods ({views} view, {writes} write), "
       f"{fields} storage fields")
+print(f"  the direct-mode suite actually has: {direct_tests} test functions")
 notes.append(f"ok   contract: {methods} methods, {fields} fields")
 
 claim("method count", f"{methods} methods", (README,))
 claim("storage field count", f"{fields} names and types", (README,))
-claim("direct-mode test count", "117", (README, FINDINGS), "both documents")
+claim("direct-mode test functions", f"{direct_tests} test functions", (README, FINDINGS), "both documents")
 claim("consensus test count", "eight consensus tests", (README,), "README")
 claim("pinned runner", "py-genlayer:1jb45aa8yn", (README,), "README")
 claim("quorum floor", "25%", (README,), "README")

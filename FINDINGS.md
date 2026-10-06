@@ -171,7 +171,7 @@ npm run typecheck --workspace frontend
 npm run build --workspace frontend
 ```
 
-Expect `117 passed, 8 skipped`. The skips are the integration tests, which skip
+Expect `121 passed, 8 skipped`. The skips are the integration tests, which skip
 themselves when no GenLayer node is reachable. `tests/test_no_float.py` is the
 file to read first if the review is about VM stability.
 
@@ -268,7 +268,7 @@ pip install -e ".[dev]"   # the one dependency list is pyproject.toml
 # static checks
 genvm-lint check contracts/fideicommis.py
 
-# 117 tests, no network, no model calls, ~11 seconds
+# 111 test functions, no network, no model calls, ~11 seconds
 python -m pytest -v
 
 # the VM stability invariant on its own

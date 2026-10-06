@@ -1,17 +1,16 @@
 <p align="center">
   <img src="https://img.shields.io/badge/GenLayer-intelligent%20contract-c9a227?style=flat-square" alt="GenLayer intelligent contract" />
   <img src="https://img.shields.io/badge/runner-pinned-in%20%231jb45aa8yn-blue?style=flat-square" alt="pinned runner" />
-  <img src="https://img.shields.io/badge/tests-117%20direct%20%C2%B7%208%20consensus-informational?style=flat-square" alt="test counts" />
 </p>
 
 # Fideicommis
 
-**An autonomous trust on GenLayer, administered in perpetuity under its own charter,
-judged by a committee of validators, funding whoever keeps it alive.**
+**An autonomous trust on GenLayer, administered in perpetuity under its own charter, judged
+by a committee of validators, funding whoever keeps it alive.**
 
-It is not a DAO, and it does not pretend to be one. What it offers is narrower and
-more checkable: a treasury whose money must reconcile to the last attoGEN, and a
-public record of why every decision was made.
+It is not a DAO, and it does not pretend to be one. What it offers is narrower and more
+checkable: a treasury whose money must reconcile to the last attoGEN, and a public record of
+why every decision was made.
 
 ---
 
@@ -22,28 +21,22 @@ public record of why every decision was made.
 - [What makes it different](#what-makes-it-different)
 - [How it works](#how-it-works)
 - [Mechanisms](#mechanisms)
+- [The contract](#the-contract)
 - [Repository structure](#repository-structure)
 - [The reader](#the-reader)
 - [Frameworks](#frameworks)
-- [Verified on a real network](#verified-on-a-real-network)
-- [What it guarantees, and where the edges are](#what-it-guarantees-and-where-the-edges-are)
+- [Deployment](#deployment)
 - [Getting started](#getting-started)
 - [Testing](#testing)
-- [What it guarantees, and where the edges are](#what-it-guarantees-and-where-the-edges-are)
-
-> **Looking for the defects?** This page is the overview: what it is, how it works, and
-> what has been verified on a real network. [FINDINGS.md](FINDINGS.md) is the record of what
-> was wrong with this contract and what closed it — the six captures, the false claims, and
-> the reasoning behind each fix. [`/about`](frontend/src/app/about/page.tsx) states exactly
-> what this does and does not establish.
+- [Where the edges are](#where-the-edges-are)
 
 ---
 
 ## What a fideicommis is
 
-A *fideicommis* (Latin *fidei commissum*, "by faith entrusted") is a legal structure
-with four defining properties. This project is built so that all four are enforced by
-the chain rather than by trust in anybody:
+A *fideicommis* (Latin *fidei commissum*, "by faith entrusted") is a legal structure with four
+defining properties. This project is built so that all four are enforced by the chain rather
+than by trust in anybody:
 
 | Legal property | What it means | What enforces it here |
 | --- | --- | --- |
@@ -52,24 +45,20 @@ the chain rather than by trust in anybody:
 | **Held for a purpose** | There is a stated reason for the trust | the mission, and the rulebook derived from the charter |
 | **Administered by a fiduciary** | The trustee owes a duty to beneficiaries, not to itself | the autonomous cycle, which pays grantees and nobody else |
 
-The common-law equivalent is a charitable trust, or a permanent endowment. The name is
-chosen because it is exact rather than decorative: everything this project does is a
-property of a fideicommis, and nothing it does is a property of a DAO.
+The common-law equivalent is a charitable trust, or a permanent endowment. Everything this
+project does is a property of a fideicommis, and nothing it does is a property of a DAO.
 
 ---
 
 ## The problem this solves
 
 An autonomous treasury has one failure mode that matters. Someone — the deployer, the
-operator, or the model — ends up able to take the money, or quietly change the rules
-that justified holding it, and nobody can tell afterwards.
+operator, or the model — ends up able to take the money, or quietly change the rules that
+justified holding it, and nobody can tell afterwards.
 
-Every other property is secondary to that one. So the design question was not "how do
-we make a trust" but **"what is the smallest set of things that must be impossible,
-regardless of who asks?"**
-
-An earlier version of this contract had four of them. The deployer could take the whole
-estate in four calls:
+Every other property is secondary to that one, so the design question was not "how do we make
+a trust" but **what is the smallest set of things that must be impossible, regardless of who
+asks?** Four were possible in an earlier version of this contract, in four calls:
 
 ```
 set_member_shares(deployer, 10000)   -> the founder owns everything
@@ -78,8 +67,10 @@ set_policy(0, 10000, 0, 9999, 10000) -> raise the ceiling to the whole treasury
 fund()                               -> and drain it
 ```
 
-All four are now refused by the contract itself, and asserted as refused against a
-live deployment rather than only in-process.
+All four are refused by the contract itself, and asserted as refused against live
+deployments rather than only in-process. Two further powers were removed for the same reason:
+an operator could point the judge at evidence sources that make anything look compliant, and
+an operator could replace the contract's code in place.
 
 ---
 
@@ -94,82 +85,64 @@ identity:
 inflow == treasury + granted + settled + dissolved + keeper_paid + burned
 ```
 
-Every payment declares which bucket it draws from, and an unrecognised bucket is
-refused *before* any value moves. So a new spending path cannot be added without the
-estate becoming unbalanced in a bucket that does not exist. This is not a report the
-trust publishes; it is the shape of the payment path itself.
+Every payment declares which bucket it draws from, and an unrecognised bucket is refused
+*before* any value moves. So a new spending path cannot be added without the estate becoming
+unbalanced in a bucket that does not exist. This is not a report the trust publishes; it is
+the shape of the payment path itself.
 
-**2. The hard limits are constants, not policy.** Quorum cannot go below 25% and the
-spend ceiling cannot go above 50%, because those two numbers live in the contract code
-rather than in storage. A vote can tighten the trust. It cannot loosen it past them.
+**2. The hard limits are constants, not policy.** Quorum cannot go below 25% and the spend
+ceiling cannot exceed 50%. A vote may tighten the trust; it can never loosen it past them.
+They are not parameters of any method, so there is nothing to pass.
 
-**3. A constitutional change is not effective when it is approved.** The delay is
-stamped when quorum is *reached*, not when the proposal is submitted, so adding votes
-cannot restart the clock. This is the property a timelock is supposed to have and
-frequently does not.
+**3. A constitutional change waits.** Quorum, the ceiling, membership, the rulebook, the
+evidence sources and the charter move only through a `GOVERNANCE` proposal, and only after a
+member vote plus a delay of one hour. The clock is stamped when quorum is *reached*, not when
+the proposal is submitted, so a trust cannot shorten its own delay by re-voting.
 
-**4. Model output never becomes the constitution.** The model may draft charter prose,
-and that draft travels as an advisory note. An amendment with no charter text cannot
-execute. Validators agree on the *action*, never on the prose, so prose must not be
-load-bearing.
+**4. Model output never becomes constitution.** The committee's verdict is consensus-bound; its
+rationale is recorded prose that nothing depends on. An amendment with no charter text cannot
+execute, so the autonomous `ADAPT` path cannot rewrite the constitution.
 
-**5. A receipt can be for the wrong transaction, and the UI used to believe it.**
-Reading the transaction status is not enough — GenLayer can return `FINALIZED` for a
-transaction that rolled back. Every driver and the reader read
-`consensus_data.leader_receipt[0].result.payload` instead, and verify the receipt's
-hash is the transaction that was just submitted.
+**5. No key owns the future.** There is no factory and no template key. Whoever deploys a
+trust is whoever chose to; no address anywhere decides what code anyone else may run.
 
-**6. No key owns the future.** There is no factory and no template key. An earlier
-version had one: a single deployer address could permanently fix the code that every
-future trust would ever run, with no governance path out of it. In a project whose
-whole claim is that the operator cannot manufacture authority unilaterally, that was a
-fifth capture, the same shape as the four above, and it was the operator's to use.
-
-**And the limitation, stated plainly:** a live trust here holds one member with every
-share, so one approval satisfies quorum alone. The contract removes the operator's
-ability to manufacture that arrangement unilaterally. **It cannot create pluralism**,
-and nothing in this repository should be read as claiming that it does.
+**6. The code cannot be replaced.** GenVM locks a contract's code slot when its constructor
+returns. This contract adds nobody to the upgraders list, exposes no `upgrade` method, and
+offers no way to become an upgrader, so immutability is the irreversible default rather than
+a promise. `get_code_upgraders()` reports the list for any address, so this is checkable from
+outside rather than taken on trust.
 
 ---
 
 ## How it works
 
-The full lifecycle, in the order it happens. Every term below is the contract's own, so
-you can read the same name in `contracts/fideicommis.py` and mean the same thing.
-
 ```
-   anyone ──▶ fund() ────────────────▶ treasury, recorded as inflow
-                    │
-   anyone ──▶ submit_proposal(kind, amount, recipient)
-                    │
-              committee assesses against the rulebook
-                    │        └─ COMPLIANT / NON_COMPLIANT / UNDETERMINED
-                    │           with the model's stated reasons attached
-                    ▼
-              members vote, weighted by shares
-                    │        └─ quorum reached: any constitutional delay starts HERE
-                    ▼
-              after the delay, a constitutional change may execute
-                    │
-   anyone ──▶ advance_cycle() ──▶ HOLD · FUND · SETTLE · ADAPT · WIND_DOWN
-                    │
-              └─ keeper reimbursed, burn deducted, buckets updated
+                        deploy  (name, mission, charter, founder, evidence urls)
+                                     |
+                                     v
+   bootstrap_rules  --------->  charter rules derived by the committee
+                                     |
+   fund()  <---------------- any sender, at any time, reviving a dormant trust
+                                     |
+   submit_proposal  -------->  anyone may propose. Only a member may vote.
+                                     |
+   assess_proposal  -------->  the committee judges it against the derived rules
+                                     |   a non-compliant verdict cannot be voted or paid
+   cast_vote  ------------->   member votes, weighted by shares
+                                     |
+   execute_proposal  ------>  GOVERNANCE and CHARTER_AMENDMENT wait one hour.
+                                     |    a GRANT does not: it is a payment, not a
+                                     |    change to what the trust is for
+   review_delivery  -------->  the committee fetches the named URL and judges it
+   settle_delivery  -------->  the second tranche is released
+                                     |
+   advance_cycle  ---------->  anyone may advance it. The committee decides what the
+                                  cycle does: burn, pay a keeper, or release a tranche.
 ```
 
-Four points in that diagram carry the design:
-
-- **Funding is permissionless.** Anyone may add money, and funding revives a dormant
-  trust permanently. A keeper who stops does not stop the trust.
-- **Advancing the cycle is permissionless** and pays its own caller. What happens in
-  the cycle is decided by the committee, not by whoever called the function.
-- **The clock starts at quorum.** A proposal cannot be re-voted into restarting its own
-  delay.
-- **Dormancy is not death.** When the runway reaches zero the trust goes dormant, and
-  the only thing that revives it is someone funding it again.
-
-At genesis the charter is set and the rulebook is **derived** from it by the model and
-stored. Until that step happens the trust is identifiable but not judging anything, and
-the reader says so rather than showing an empty rulebook as if it were deliberate.
+A grant pays in two tranches. The first on execution; the second only after
+`review_delivery` finds the delivered work evidenced by a public source the committee could
+actually fetch.
 
 ---
 
@@ -177,271 +150,159 @@ the reader says so rather than showing an empty rulebook as if it were deliberat
 
 ### Consensus
 
-The committee is the mechanism, and so is the thing being constrained. A leader
-produces a decision; validators independently re-derive it from the same charter and
-the same evidence; the result is accepted only when they agree.
-
-The four equivalence rules, in plain terms:
-
-1. **Leader and validators must produce the same output.** A leader cannot decide
-   something validators will not confirm.
-2. **Validators see the same inputs as the leader.** The leader cannot feed them a
-   different fact and rely on the difference.
-3. **Non-deterministic work is re-executed, not trusted.** Web fetches and LLM calls are
-   re-run by each validator.
-4. **A disagreement is an appeal, not a tie-break.** It triggers another round, not a
-   vote on which validator is right.
+`assess_proposal`, `review_delivery` and `advance_cycle` use `gl.nondet.exec_prompt`;
+`review_delivery` also fetches the evidence URL with `gl.nondet.web.get`. The leader runs the
+task and validators re-derive it independently, so a leader that fabricates a verdict is
+caught rather than trusted. The aggregation over per-source results is a pure function of
+buckets, with no free-form reasoning and no floats, so two validators that see the same
+buckets reach the same answer.
 
 ### The timelock
 
-Constitutional changes — charter, quorum, ceiling, membership, rulebook, evidence
-sources — move only through a `GOVERNANCE` or `CHARTER_AMENDMENT` proposal, and only
-after a member vote *plus* the delay. Everything else about how the trust is governed
-is a normal proposal that happens to be cheap to make.
+The delay applies to `GOVERNANCE` and `CHARTER_AMENDMENT`, and `execute_proposal` checks the
+proposal kind before requiring it. `op_ready_at` is stamped when quorum is reached, so the
+delay cannot be shortened by adding votes early. A `GRANT` is not a constitutional change and
+executes on quorum alone.
 
 ### Conservation
 
-The identity above is checked rather than asserted. The reader recomputes the residue
-from the six buckets and compares it against the contract's own `conserved_atto`, so a
-disagreement between the two is visible instead of hidden.
+`_pay` takes the bucket it draws from and refuses an unrecognised one before any value moves.
+The lifetime flow is the sum of six buckets plus what is still held, and the reader prints the
+residue if they disagree rather than hiding it.
 
 ### VM safety
 
-GenVM executes Python. Two classes of mistake there are silent rather than loud, so
-both are pinned by tests:
+No float division appears anywhere in the contract; a float in consensus-executed code
+crashes the VM rather than returning a wrong number. GenLayer's storage layout is positional,
+so a field inserted mid-list silently reinterprets every field after it. The layout is
+therefore frozen and append-only, and `tests/test_fideicommis.py` pins all
+**44 names and types** in order, so an insertion fails the suite rather than passing it.
 
-- **No float arithmetic anywhere in consensus code.** `tests/test_no_float.py`
-  inventories every division in the contract and fails on a float one. A float in
-  consensus-executed code crashes the VM rather than returning a wrong number.
-- **The storage layout is positional and frozen.** Field number *N* is always field *N*.
-  A field inserted mid-list silently reinterprets every field after it on every deployed
-  trust. `test_storage_layout_is_frozen_append_only` pins all 44 names and types in
-  order, parsed with `ast` so an annotation inside a method cannot be mistaken for a
-  field.
+---
+
+## The contract
+
+One file, one class, **40 methods** (25 view, 15 write), **44 storage fields**.
+
+```
+contracts/fideicommis.py
+  # { "Depends": "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6" }
+```
+
+The runner version is pinned in the `Depends` header because the deployed bytecode and the
+source have to agree exactly, and an unpinned runner is a way to change that underneath you.
+
+There is no second contract and no factory. Two `gl.Contract` subclasses cannot coexist in one
+VM instance, and a factory has to decide once and forever what code every future trust will
+run — which would be a permanent, unrevocable authority over the platform held by whoever
+deployed it.
+
+### Public surface
+
+| | Methods |
+| --- | --- |
+| Permissionless writes | `fund`, `advance_cycle`, `bootstrap_rules`, `submit_proposal`, `assess_proposal`, `review_delivery` |
+| Member acts | `cast_vote` |
+| Operator acts | `set_policy` |
+| Deliberately refused | `set_member_shares`, `set_evidence_urls`, `clear_rules`, `upgrade`, `set_code_upgraders` |
+| Views | constitution, state, policy, members, rulebook, charter, mission, mission log, charter history, evidence urls, treasury, status, lifetime flow, proposals, audits, `get_code_upgraders` |
+
+The refused methods are kept as declarations that always revert, so calling one explains
+itself instead of reporting an unknown method. Removing them entirely would leave a caller
+with no answer at all.
 
 ---
 
 ## Repository structure
 
 ```
-contracts/
-  fideicommis.py              the trust. one contract, one file, 40 methods
-
-tests/
-  test_fideicommis.py         direct mode, 117 tests, no network, no model calls
-  test_no_float.py            invariant: no float division in consensus
-  integration/
-    test_consensus.py         the same flows through a real validator committee
-
-frontend/                          the audit reader, Next.js 16 App Router
-deploy/deployScript.ts        one command: deploy, then read it back
-scripts/                      Studionet drivers with receipt-hash correlation
-tools/run_glsim_windows.py    the Windows glsim workarounds
-
-gltest.config.yaml            network configuration for the consensus suite
-check_bundle_guard.py         the reader's server-only guard, for Windows
-check_layout.py               asserts the page widths against the built stylesheet
+contracts/fideicommis.py     the trust. one contract, one file, 40 methods
+tests/                       direct mode: 111 test functions, no network, no model calls
+tests/integration/           consensus against real GenVM on Studionet
+frontend/                    the reader
+scripts/                     Studionet drivers, all sharing scripts/studionet.cjs
+deploy/deployScript.ts       deploy entrypoint
+tools/run_glsim_windows.py   Windows workarounds for the local simulator
+check_docs.py                asserts the figures in this file against the contract
 ```
-
-**Why one contract.** Two `gl.Contract` subclasses cannot coexist in one VM instance,
-in one file or imported from two modules, because `__known_contract__` is a single
-global in the SDK namespace. Two contracts therefore means two deployments, and merging
-the classes was never available.
 
 ---
 
 ## The reader
 
-A trust that cannot explain a decision cannot be audited. `frontend/` is that audit record,
-and its strongest claim is a negative one:
+`frontend/` is a Next.js 16 App Router application that reads a trust and shows what its own
+view methods return. It holds no key: reads need none, and connecting a wallet is only how a
+transaction gets signed.
 
-> It holds no key, it cannot sign on its own, and every figure it shows is a call to the
-> trust's own `get_*` method.
+- `/` the overview
+- `/trusts` the directory
+- `/trust/[address]` the full record: ledger, constitution, rulebook, every decision
+- `/how-it-works` the mechanism in the order it happens
+- `/verify` every view method this reader calls, what it uses the answer for, and the raw
+  value it returned — so any claim here can be re-derived by making the same call
+- `/about` what this does and does not establish
 
-Connecting a wallet is how a transaction gets signed, and that happens in the wallet with
-your approval, one transaction at a time. So the reader has a write path and no custody —
-which is a narrower and more useful claim than "read-only", a label that was true when the
-reader had no write path and stopped being true when it gained one.
+Every figure on every page is a `get_*` call against the trust's own contract. The page and
+the contract share no data.
 
-So any claim on any page can be checked by making the same call yourself — and
-[`/verify`](frontend/src/app/verify/page.tsx) exists to make that literally true. It lists
-the complete call surface and shows what each method returned just now, as raw values.
+Four states are kept apart, because they mean different things and collapsing them would make
+a wrong address look like a broken site: a wrong address answers `get_org_summary` with
+nothing; an address on another network, or a wallet address, is a different contract entirely;
+a rate-limited node is neither of those; and a trust whose individual views fail is rendered
+with the failures named rather than hidden.
 
-It also takes a transaction hash. The figures above are claims about state; a hash is a
-claim about a decision — whether a write settled, whether a committee was unanimous, and
-whether the status field agreed. That evidence was previously visible only to whoever
-signed the write, which is the wrong audience for it. It keeps four outcomes apart on
-purpose: *no record*, *not yet decided*, *rolled back*, and *settled*. A node answering
-"no record" for a hash it has never seen is not a committee rejecting anything, and the
-page says so rather than letting the absence read as a verdict.
-
-Five pages:
-
-| Route | What it is for |
-| --- | --- |
-| `/` | the live conservation balance, read from the chain |
-| `/trusts` | the directory of trusts, kept in this repo rather than on chain |
-| `/trust/[address]` | the full record: ledger, constitution, rulebook, every decision |
-| `/how-it-works` | the mechanism, in the order it happens |
-| `/verify` | every call this reader makes and what it returned; `?tx=` reads one transaction's committee evidence |
-| `/about` | what this is, and the limits it does not remove |
-
-Three behaviours worth naming, because they are the ones that make it worth reading:
-
-- **A disagreement between the constitution view and the state view** means the deployed
-  bytecode is not what the reader expects. That is stated at the top, and the figures
-  below it are marked unverified.
-- **A view that fails is named, not shown as empty.** A trust that has not derived its
-  rulebook yet is a normal state, not a broken page.
-- **A proposal that is not shown says so**, with the count and where the full list is.
-  A reader that quietly truncates is indistinguishable from one with nothing to hide.
-
-Reads are batched and cached with request coalescing, because the node allows thirty
-requests a minute per IP and a page that re-reads a trust to show the same figures is
-not reading, it is re-fetching. A transaction hash is cached too, and the page says when
-its answer was not read fresh — the node reports an unknown hash by throwing rather than
-returning null, so the commonest answer on a hash URL is an absence, and a cache that
-cannot hold an absence re-asks on every visit.
-
-To deploy it: [`VERCEL.md`](VERCEL.md). Every Vercel setting it needs is in `vercel.json`,
-including the Root Directory, because `outputDirectory` is resolved relative to it and
-`frontend/` there makes the path `frontend/frontend/.next`. No environment variable is
-required and no key can
-be set, which `check_deploy.py` enforces rather than trusting.
+The page paints before the chain is read. The shell is served immediately and the record
+arrives over a second request, so the first paint does not wait on a node that takes seconds
+to answer.
 
 ---
 
 ## Frameworks
 
-| Layer | Choice | Note |
-| --- | --- | --- |
-| Chain | [GenLayer](https://docs.genlayer.com) | intelligent contracts on the Equivalence Principle |
-| Contract | Python 3.12, GenVM | runner pinned to `py-genlayer:1jb45aa8yn…` |
-| Static analysis | `genvm-lint` | the official linter for the pinned runner, and what CI gates on |
-| Testing | `pytest`, `genlayer-test`, `gltest` | direct mode in-process; Studio mode against a committee |
-| Frontend | Next.js 16, React 19 | App Router; the page paints before the chain is read |
-| Chain SDK | `genlayer-js` | server-only; never reaches a browser bundle |
-| Wallet | injected EIP-1193, `viem` | MetaMask, Rabby, or any compatible wallet |
-| Type | IBM Plex Sans, IBM Plex Mono, Newsreader | prose, data, and the charter's voice; self-hosted, SIL OFL |
-
-The runner version is pinned in a `Depends` header because GenLayer's storage layout is
-positional: the deployed bytecode and the source have to agree exactly, and an unpinned
-runner is a way to change that underneath you.
+| | |
+| --- | --- |
+| Contract language | Python on GenVM, runner pinned |
+| Static analysis | `genvm-lint` — the official linter for the pinned runner, and what CI gates on |
+| Testing | `pytest`, `genlayer-test`, `gltest` — direct mode in-process; Studio mode against a committee |
+| Frontend | Next.js 16, React 19 — App Router; the page paints before the chain is read |
+| Chain SDK | `genlayer-js` — server-only; never reaches a browser bundle |
+| Wallet | injected EIP-1193, `viem` — any wallet, chosen by name over EIP-6963 |
+| Type | IBM Plex Sans, IBM Plex Mono, Newsreader — prose, data, and the charter's voice; self-hosted, SIL OFL |
 
 ---
 
-## Verified on a real network
+## Deployment
 
-On Studionet, with real model calls and a real validator committee.
+The contract is deployed from source to GenLayer Studionet. `deployScript.ts` prints the
+resulting address, which is a trust in its own right: anyone who deploys becomes its founder
+and sole member, and can act on it immediately.
 
-**The deployment that can be fully audited** is `0x0A3912aa80a403efDEf664A8e03895CCF5b137D8`,
-built from the current source. Nine transactions walked the whole path — derive the rulebook,
-fund, propose, have the committee judge, vote, execute, review the delivery, settle — and the
-grant below pays a real beneficiary, so the money genuinely leaves the trust.
-
-```
-trust      : 0x0A3912aa80a403efDEf664A8e03895CCF5b137D8   "Open Ledger Fund"
-beneficiary: 0x646454E139609564ae2bbDA7762bB4ADaA01B467
-policy     : burn 0, keeper 0, tick 60s, ceiling 20 percent of treasury
-
-[1] bootstrap_rules  -> 7 rules derived from the charter
-[2] fund 1.000000    -> treasury 1.000000, ceiling 0 -> 0.200000
-[3] submit_proposal  -> p1, 0.050000 GEN, verdict PENDING
-[4] assess_proposal  -> COMPLIANT   violations []
-[5] cast_vote        -> approvals 1, quorum reached
-[6] execute_proposal -> payout, grant tranche released
-[7] review_delivery  -> ACCEPTED    score 95
-[8] settle_delivery  -> second tranche released, p1 settled
-    ... identical for p2
-
-inflow 1.000000 == treasury 0.805000 + granted 0.100000 + settled 0.095000
-                  + dissolved 0 + keeper_paid 0 + burned 0
+```bash
+genlayer network set studionet
+node deploy/deployScript.ts --dry-run
+node deploy/deployScript.ts
 ```
 
-Two grants, both `COMPLIANT`, both `ACCEPTED` at score 95, both settled. The same proposal
-was first refused as `NON_COMPLIANT` with violations `["BUDGET_CEILING","R1"]` while the
-treasury was empty, and accepted once it was funded — the committee read the on-chain ceiling
-rather than the text. A ceiling of zero makes every positive grant a violation, so the
-refusal was correct and said why.
+Studionet cannot upgrade a contract, so each deployment is a distinct address that stands on
+its own. The reader opens any of them by address; `/trusts` lists the ones this repository
+knows about, and that list is a file in the repository rather than on-chain state, because a
+directory of live trusts is worth keeping and on-chain state owned by one address is not.
 
-**The constitutional delay covers `GOVERNANCE` and `CHARTER_AMENDMENT` only.** A `GRANT` does
-not wait: `execute_proposal` checks `kind in CONSTITUTIONAL_KINDS` before requiring the
-timelock, and that branch is asserted by the timelock consensus test. A script written during
-this work predicted the opposite and was wrong, which is why it is stated here.
-
-**A deployment is frozen, and the code says so.** GenVM locks the root, code, `locked_slots`
-and `upgraders` slots the moment `__init__` returns; adding nobody to `upgraders` is the
-documented way to stay frozen, and it is irreversible. This contract adds nobody, has no
-`upgrade` method, and no method that could grant one. `get_code_upgraders()` returns the list,
-so a reader can check that claim rather than take it:
+### The live deployment
 
 ```
-0x03D0d63AC67F4D0D478d7F506530DCFD99bA338f
-  get_code_upgraders -> []
-  upgrade            -> no such method
-  set_code_upgraders -> no such method
+address    0x03D0d63AC67F4D0D478d7F506530DCFD99bA338f
+name       Open Ledger Fund
+status     ACTIVE     charter version 1
+upgraders  []         frozen — no address can replace this code
 ```
 
-This was a fifth capture, and it is worth recording how it was missed. `__init__` added the
-deployer to `upgraders`, which handed whoever deployed a trust permanent power to replace its
-code — the list survives every upgrade and an upgrader can re-add itself. It never appeared
-among the captures because it was never examined, and this project had been asserting that
-Studionet cannot upgrade a contract, which was true of every deployment and true *by
-accident*. `set_code_upgraders` was the third dead surface this contract has now removed; it
-could only ever be called by an upgrader, so the operator could use it only if the operator
-already had the thing it granted.
+Explorer: `https://explorer-studio.genlayer.com/address/0x03D0d63AC67F4D0D478d7F506530DCFD99bA338f`
 
-`gen_getContractCode` returns the deployed source, which is stronger than a code hash and the
-only identity GenLayer offers — there is no `codeHash` method. The source of that deployment
-is byte-identical to the file in this repository. The same call distinguishes the builds
-without any version string: the current one defines `_require_timelock` and returns six
-conservation buckets, the older one defines neither.
-
-### The earlier deployments, and what each cannot show
-
-Four older trusts exist. All are live, and **none of them can be audited in full** — an older
-build of this contract, and Studionet cannot upgrade a contract, so none of it is repairable
-in place. They are listed because omitting them would present the current source as the only
-thing that ever ran.
-
-| Trust | Status | What it cannot show |
-| --- | --- | --- |
-| `0x0A3912aa…D8` | ACTIVE, 7 rules, 2 proposals, 2 settled | superseded by the frozen build below |
-| `0x03D0d63A…38f` | ACTIVE, frozen, 0 proposals | the current build; empty because nothing has happened to it yet |
-| `0x76051A36…0597` | ACTIVE, 6 rules, 2 proposals | `p1` rests `NON_COMPLIANT`: its ceiling was 0 |
-| `0xaEDf11fD…468aF` | ACTIVE, 8 rules, 3 proposals | `get_constitution` and `get_constitutional_state` **refuse** |
-| `0x89D3E2F9…113F` | ACTIVE, 6 rules, 1 settled | Previous build; figures are that build's |
-| `0x50590E26…C4DF` | ACTIVE, 2 proposals, 1 settled | Both constitution views **refuse**, and `get_lifetime_flow` returns three fields |
-
-**Every deployment before `0x03D0d63A…` can have its code replaced by whoever deployed it.**
-They predate the constructor change, so their `upgraders` list names their deployer, and the
-list is permanent. Their reader page says so, in the Provenance panel, because a reader that
-cannot distinguish a frozen trust from a mutable one is not telling you what you need to know.
-The breaks below are not — they are live, and upgrading them is a real option their deployer
-holds.
-
-That last row is the important one. On `0x50590E26…` the conservation ledger **cannot be
-checked at all**, because its `get_lifetime_flow` returns only `inflow_atto`,
-`keeper_paid_atto` and `outflow_atto` — there are no buckets to sum. An earlier version of
-this file led with that deployment as the verification, which overstated it: the identity
-this project is built around is a current-source feature, and only a current-source
-deployment can demonstrate it.
-
-Also verified live on the older trusts: the funding loop with per-cycle burn and keeper
-reimbursement; dormancy when the treasury empties; revival by `fund()`; the rejection path
-where a surveillance grant is blocked from both voting and payment; and a charter amendment
-that raised the charter from version 1 to 2 and cleared the rulebook.
-
-The four operator captures were asserted as **refused** against a live deployment:
-
-```
-membership   set_member_shares -> refused
-rulebook     clear_rules       -> refused
-evidence     set_evidence_urls -> refused
-5-arg policy set_policy        -> refused
-
-quorum 5000 | ceiling 2000 | charter v1 | conservation holds
-```
+`gen_getContractCode` returns the source of a deployed contract, and for the address above it
+is byte-identical to `contracts/fideicommis.py`. There is no `codeHash` method in GenLayer;
+the code itself is the only identity available, and comparing it is stronger than a
+consistency check between two view methods.
 
 ---
 
@@ -450,79 +311,69 @@ quorum 5000 | ceiling 2000 | charter v1 | conservation holds
 ```bash
 git clone <this repo> && cd fideicommis
 pip install -e ".[dev]"
-python -m pytest -q          # 117 direct-mode tests, no network, no model calls
+python -m pytest -q
 genvm-lint check contracts/fideicommis.py
 ```
-
-Deploy a trust — there is no factory and no template key:
-
-```bash
-node deploy/deployScript.ts
-```
-
-It deploys, reads the name and constitution back to confirm the deployment is real, and
-prints the address. Two steps are then left to you on purpose:
-
-1. `bootstrap_rules` — derive the rulebook the committee judges by.
-2. `fund()` — anyone may do this, and funding revives a dormant trust.
-
-Then open the address in [the reader](#the-reader).
-
----
-
-## Testing
-
-Three layers, because each catches what the others cannot.
-
-```bash
-python -m pytest -q                    # 117 tests, direct mode, ~11s
-genvm-lint check contracts/fideicommis.py
-
-# the consensus suite, against a real committee
-gltest tests/integration -v -s --network studionet
-gltest tests/integration -v -s -m slow --network studionet
-```
-
-The eight consensus tests took 6m03s on the run that produced the figures above, because
-every transaction goes through a real committee. The five marked `slow` additionally call
-real models and took 6m59s. Two of them skip, legitimately: the committee judged those
-proposals non-compliant, which is a valid outcome rather than a failure. So 11 of the 13
-pass and 2 skip, and none of the skips hides a defect.
 
 For the reader:
 
 ```bash
 npm ci                                  # an npm workspace: install from the root
-npm run typecheck --workspace frontend
-npm run build --workspace frontend
+npm run dev                             # http://localhost:3000
+npm run typecheck
+```
+
+No environment variable is required and no key can be set to one: `lib/genlayer.ts` is
+`server-only`, and the build fails rather than shipping a reader that could sign.
+
+Deployment settings are in [`VERCEL.md`](VERCEL.md).
+
+---
+
+## Testing
+
+```bash
+python -m pytest -q                    # direct mode, no network, no model calls
+genvm-lint check contracts/fideicommis.py
+
+gltest tests/integration -v -s --network studionet
+gltest tests/integration -v -s -m slow --network studionet
+
+npx --yes tsx@4 tests/check_write_gating.mts
+npx --yes tsx@4 tests/check_read_budget.mts
+npx --yes tsx@4 tests/check_capabilities.mts
+npx --yes tsx@4 tests/check_render_path.mts
+npx --yes tsx@4 tests/check_degraded_panels.mts
+npx --yes tsx@4 tests/check_wallet_layout.mts
+
+python check_docs.py
 python check_bundle_guard.py
 python check_layout.py
 ```
 
-**Direct mode is not GenVM.** It runs the contract's Python in-process with web and LLM
-calls mocked. It is fast enough to iterate against and it is where the 117 tests live,
-but a passing direct suite is necessary and never sufficient: the equivalence
-principles only mean anything under a real committee, which is what the consensus suite
-is for.
+The eight consensus tests take about six minutes, because every transaction goes through a
+real committee. The five marked `slow` additionally call real models.
+
+Two things in the suite are worth knowing before trusting it. The write gating is a pure
+function in `lib/write-gating.ts` rather than inline in a component, so it can be tested
+without copying it out. And the read budget is asserted against the code: the constants in
+`lib/trust.ts` are checked against the number of views actually sent, because a prose figure
+describing arithmetic goes stale silently.
 
 ---
 
-## What it guarantees, and where the edges are
+## Where the edges are
 
 Everything above is enforced by the contract or read live from it. The boundaries of that are
 stated in full at [`/about`](frontend/src/app/about/page.tsx), which is where a reader should
 go to decide how much weight to put on any of it.
 
 [`SECURITY.md`](SECURITY.md) separates what the contract enforces without trust in the
-operator from what no contract can enforce for you, and the record of what was wrong with
-this contract and what closed it is [FINDINGS.md](FINDINGS.md).
-
-The short version: the arithmetic is checkable from outside, the rules cannot be moved without
-a vote and a delay, and whether a trust is *worth* trusting is a judgement the page gives you
-the evidence to make rather than one it makes for you.
+operator from what no contract can enforce for you. [`FINDINGS.md`](FINDINGS.md) is the record
+of what was wrong with this contract and what closed it.
 
 ---
 
 ## Licence
 
-MIT. See [LICENSE](LICENSE).
+MIT for the contract and the reader.
