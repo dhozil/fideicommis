@@ -1247,7 +1247,27 @@ Two further rules apply to the main contract:
   not in the contract.
 - One operator holds the keys. A production deployment would put the operator
   behind a multisig and add a proposal deposit so spam proposals cost something.
-- The contract is a synthetic jurisdiction, not a legal one. Nothing here
-  replaces the agreements, licensing, or jurisdiction a real trust would need,
-  and the appeal path exists precisely so a disputed outcome can be challenged
-  by validators rather than settled by one model.
+  - The contract is a synthetic jurisdiction, not a legal one. Nothing here
+    replaces the agreements, licensing, or jurisdiction a real trust would need,
+    and the appeal path exists precisely so a disputed outcome can be challenged
+    by validators rather than settled by one model.
+
+---
+
+## Three lived-in trusts
+
+Deployed `Nusantara Archive Trust`, `Open Science Fund`, and `Pustaka Iklim Trust`
+from the current source with the operator wallet, and walked each one the whole
+path with `scripts/demo_cycle.cjs`: funded, one charter-violating proposal refused,
+two upkeep grants settled, conservation identity holding on all three. Two things
+learned, both now in the script rather than in anyone's memory:
+
+- Never assess against an empty treasury. The first run's `fund` was lost to node
+  flakiness and the script carried on, so two grants were judged `NON_COMPLIANT`
+  on `R1`/`TREASURY_CEILING` instead of on their merits — and a verdict is final,
+  so they could not be re-judged. The script now refuses to submit anything until
+  the treasury reads non-zero.
+- The mission boundary is enforced by the committee, not by the name on the
+  trust. Upkeep proposals naming a page outside the chartered mission were
+  refused with `MISSION` violations even though the amounts were inside the
+  ceiling. The fix was on-theme pages (resilience, mitigation), not larger ones.
