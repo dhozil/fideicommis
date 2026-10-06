@@ -373,12 +373,13 @@ describing arithmetic goes stale silently.
 
 ## Where the edges are
 
-Everything above is enforced by the contract or read live from it. The boundaries of that are
-stated in full at [`/about`](frontend/src/app/about/page.tsx), which is where a reader should
+Everything above is enforced by the contract or read live from it. The three facts
+around that — one member per live trust, one author, testnet — are stated once at
+[`/about`](frontend/src/app/about/page.tsx), which is where a reader should
 go to decide how much weight to put on any of it.
 
-[`SECURITY.md`](SECURITY.md) separates what the contract enforces without trust in the
-operator from what no contract can enforce for you. [`FINDINGS.md`](FINDINGS.md) is the record
+[`SECURITY.md`](SECURITY.md) states what the contract enforces without trust in the
+operator. [`FINDINGS.md`](FINDINGS.md) is the record
 of what was wrong with this contract and what closed it.
 
 ---

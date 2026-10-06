@@ -100,7 +100,7 @@ claims to be.
 
 ## Reporting something you think is wrong
 
-The README's "Known limits" and "What this does not fix" are load-bearing. If you
+The reader's /about boundaries (one member, one author, testnet) are load-bearing. If you
 find a hole, the useful report is the shortest sequence of calls that reaches it,
 plus what you expected the contract to refuse and which guard you think was
 bypassed. Adversarial tests are the highest-value contribution to this project.

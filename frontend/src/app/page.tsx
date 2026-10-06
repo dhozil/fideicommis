@@ -161,13 +161,12 @@ export default async function Home() {
             </Link>
           </div>
           <div className="panel">
-            <h3>What this is, and is not</h3>
+            <h3>What this is</h3>
             <p className="muted">
-              The claims this project makes, the ones it refuses to make, and what no
-              contract here can enforce for you.
+              The claims this project makes, and the three boundaries around them.
             </p>
             <Link href="/about" className="btn">
-              Read the limits
+              Read the boundaries
             </Link>
           </div>
         </div>

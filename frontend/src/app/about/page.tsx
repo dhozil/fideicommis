@@ -3,18 +3,19 @@ import Link from "next/link";
 import { FEATURED_TRUST } from "@/lib/registry";
 
 export const metadata: Metadata = {
-  title: "What this is, and what it is not",
+  title: "What this is",
   description:
-    "The claims this project makes, the claims it refuses to make, and what no contract here can enforce for you.",
+    "The claims this project makes, and the three boundaries around them.",
 };
 
 /**
- * The second list is the useful one.
+ * The boundaries, stated once.
  *
- * Anything a contract can enforce, the code and its tests already say. What a
- * reader cannot enforce for a stranger is a different list entirely, and a project
- * that only published the first would be overselling itself. This page is that
- * second list, written plainly rather than hedged.
+ * Anything a contract can enforce, the code and its tests already say. Three
+ * facts sit outside that and are stated here rather than repeated in every
+ * document: each live trust has one member, nothing here has been independently
+ * reviewed, and this is a testnet. A project that published only the enforced
+ * list would be overselling itself.
  */
 
 const ENFORCED = [
@@ -28,28 +29,16 @@ const ENFORCED = [
 
 const NOT_ENFORCED = [
   {
-    claim: "That the committee is right.",
-    honest: "A validator committee re-derives each decision from the charter, but it is still a model judging prose. The reader shows its stated reasons so you can disagree with them. It cannot show you that the reasons are sound.",
+    claim: "Each live trust has one member.",
+    honest: "One member holding every share, so one approval satisfies quorum. The contract removes the operator's ability to manufacture that arrangement unilaterally. It cannot create pluralism.",
   },
   {
-    claim: "That the trust is plural.",
-    honest: "The live trust has one member holding every share, so one approval satisfies quorum. The contract removes the operator's ability to manufacture that arrangement unilaterally. It cannot create pluralism, and nothing here should be read as claiming it does.",
+    claim: "Nothing here has been independently reviewed.",
+    honest: "Contract, reader, and tests written by one person, running on the Studionet testnet with no real value at stake. Before putting anything that matters in a trust you cannot leave, have somebody who did not write it read it.",
   },
   {
-    claim: "That the code you are reading is the code that is deployed.",
-    honest: "This reader checks that the constitution view and the state view agree about the hard limits, which catches a substituted or miscompiled contract. It is a consistency check, not an attestation. For that, deploy the contract yourself and keep the address, or read the transaction on the explorer.",
-  },
-  {
-    claim: "That a good outcome follows from a correct one.",
-    honest: "Conservation means the money is accounted for. It does not mean it was spent well. A trust can reconcile perfectly and fund something you think is a bad idea, and the reader will show you that it did so cleanly.",
-  },
-  {
-    claim: "That the software here has been reviewed by anyone else.",
-    honest: "It has not. Every test in this repository was written by the same person who wrote the contract. Nobody independent has read this for errors. Treat it as unreviewed, however many tests it has.",
-  },
-  {
-    claim: "That the node will keep answering.",
-    honest: "This reader calls a public node with a rate limit of thirty reads a minute. It will sometimes be busy, and a busy node looks like an empty page rather than an error. That is a property of reading a public chain for free, and it is not hidden behind a spinner.",
+    claim: "The node is public property.",
+    honest: "Reads come from a public node at thirty a minute. It is sometimes busy, and a busy node looks like an empty page rather than an error.",
   },
 ];
 
@@ -57,15 +46,14 @@ export default function About() {
   return (
     <main id="main">
       <section style={{ paddingTop: 34 }}>
-        <span className="eyebrow">The honest page</span>
+        <span className="eyebrow">The boundaries</span>
         <h1 style={{ maxWidth: "15ch" }}>
-          What this is, and what it is not.
+          What this is.
         </h1>
         <p className="lede" style={{ marginTop: 18 }}>
           An autonomous trust is an estate entrusted in perpetuity and left to its own
-          devices. It is explicitly not a DAO, and the section below is not marketing:
-          the most important limitation of this project is that a one-member trust is
-          governed by one person.
+          devices. It is explicitly not a DAO. Three facts sit around that claim,
+          stated here once.
         </p>
       </section>
 
@@ -89,21 +77,21 @@ export default function About() {
       <hr className="rule" style={{ margin: "48px 0 34px" }} />
 
       <section className="prose">
-        <span className="eyebrow">Not enforced by anything</span>
+        <span className="eyebrow">Boundaries</span>
         <h2 style={{ maxWidth: "24ch" }}>
-          The list that matters more.
+          Three facts, stated once.
         </h2>
         <p>
-          A contract can refuse an operation. It cannot make you trust the reasoning
-          behind one, and it cannot stop you reading a wrong contract. These are the
-          claims this reader will not make for you.
+          A contract can refuse an operation. It cannot create a second member, it
+          cannot review itself, and it cannot reserve a public node. These are the
+          three.
         </p>
         <div style={{ marginTop: 24 }}>
           {NOT_ENFORCED.map((item) => (
             <div className="guarantee" key={item.claim}>
-              <div className="key" style={{ color: "var(--brass)" }}>
-                not proven
-              </div>
+                <div className="key" style={{ color: "var(--brass)" }}>
+                  boundary
+                </div>
               <div>
                 <div className="claim">{item.claim}</div>
                 <p className="why">{item.honest}</p>
@@ -141,10 +129,8 @@ export default function About() {
 
       <section style={{ marginTop: 40 }}>
         <div className="notice warn" style={{ maxWidth: "64ch" }}>
-          <strong>Nothing here has been audited.</strong> The contract, the reader and
-          every test in this repository were written by one person. A test suite can
-          be wrong, and 128 of them agreeing proves only that they agree. Before
-          putting money in a trust you cannot leave, have somebody who did not write
+          <strong>Testnet, single author, unreviewed.</strong> Before putting anything
+          that matters in a trust you cannot leave, have somebody who did not write
           it read it.
         </div>
       </section>

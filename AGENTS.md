@@ -157,8 +157,8 @@ others did not:
 ## Contributing
 
 `CONTRIBUTING.md` has the same rules in checklist form. `SECURITY.md` states what
-the contract enforces without trust in the operator and, separately, what no
-contract can enforce — the second list is the more useful one.
+the contract enforces without trust in the operator; the project boundaries live
+once on the reader's /about page rather than repeated in every document.
 
 ## Why there is one contract
 

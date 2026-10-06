@@ -41,7 +41,7 @@ export function SiteFooter() {
           </span>
           <Link href="/how-it-works">How a trust works</Link>
           <Link href="/verify">Check it yourself</Link>
-          <Link href="/about">What this is, and what it is not</Link>
+          <Link href="/about">What this is</Link>
           <Link href="/trusts">The directory</Link>
         </nav>
 

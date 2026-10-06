@@ -38,18 +38,11 @@ Being explicit about this is a security property, not a disclaimer.
   as an advisory log note; the amendment body starts empty and an empty amendment
   cannot execute.
 
-**Not enforced, and no amount of contract code can enforce it:**
-
-- A trust with one member is governed by one person. The contract removes the
-  operator's ability to *manufacture* that arrangement unilaterally; it cannot
-  create pluralism. This is the most important limit in the project and it is
-  stated in the README under "What this does not fix".
-- The committee's reasoning is model output. It is recorded and shown, and the
-  verdict is agreed by validators, but no contract can prove the reasoning is
-  correct. Evidence is fetched contract-side so the committee is judging real
-  content rather than a title and a URL.
-- The network's own liveness. Nothing here survives an unavailable RPC, and the
-  live runs are paced around Studionet's 30-requests-per-minute limit.
+**Outside the contract.** The project boundaries — one member per live trust, one
+author, testnet, unreviewed — are stated once, on the reader's `/about` page,
+rather than repeated here. What matters for this file: the contract removes the
+operator's ability to manufacture sole membership unilaterally; it cannot create
+pluralism, prove a committee's reasoning correct, or keep a public node answering.
 
 ## Reporting a problem
 

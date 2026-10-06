@@ -18,7 +18,7 @@ scattered through an overview.
 | --- | --- | --- |
 | **What it does** | [What a fideicommis is](#what-a-fideicommis-is) · [The lifecycle](#the-lifecycle) | and explicitly [what it is not](#what-this-is-and-what-it-is-not) |
 | **What is verified, on a real network** | [Verified on real GenVM](#verified-on-real-genvm) | every claim below is a real Studionet transaction |
-| **What it does not do** | [What this does not fix](#what-this-does-not-fix) · [Known limits](#known-limits) | read this before believing the rest |
+| **What it does not do** | the reader's [/about boundaries](../../frontend/src/app/about/page.tsx) · [Known limits](#known-limits) | read this before believing the rest |
 | **What I got wrong and fixed** | [Findings](#findings) | six of them, each with the hole and the guard that now closes it |
 | **How to run it** | [Quick check for a reviewer](#quick-check-for-a-reviewer) | no network and no model calls, about ten seconds |
 
@@ -106,9 +106,8 @@ that make that real are all verified on a real network:
 
 Claim 4 is narrower than claims 1 to 3 on purpose. It says the operator cannot
 take the estate and cannot do it by arranging for a rule change first. It does
-**not** say a one-member trust is well governed; that is
-[What this does not fix](#what-this-does-not-fix), and it is the most important
-sentence in this document.
+**not** say a one-member trust is well governed; that boundary is stated with the
+other two on the reader's /about page.
 
 ---
 
@@ -985,24 +984,6 @@ against a live trust and asserts the constitution is byte-identical afterwards.
 
 ---
 
-## What this does not fix
-
-The live trust still has one member with 100% of the shares, and a single member
-who votes on their own proposal is still a single member. Nothing here creates
-pluralism; it removes the operator's ability to *manufacture* it unilaterally. The
-honest version of the fourth claim is narrower than the first three:
-
-> The operator cannot take the estate unilaterally, and cannot do it by
-> arranging for a rule change first. But a one-member trust is governed by one
-> person, and this contract cannot change that.
-
-Pluralism is a social fact, not a contract invariant. What the contract can do is
-make sure that one person cannot convert "I am the only member" into "I own the
-treasury" in four transactions, and cannot do it faster than an hour of public
-notice.
-
----
-
 ## Read the record instead of trusting this document
 
 Every claim above can be checked against the contract's own view methods. There is
@@ -1231,6 +1212,9 @@ Two further rules apply to the main contract:
 
 ## Known limits
 
+These are engineering bounds, not hedges; the project boundaries (one member,
+single author, testnet) are stated once, on the reader's /about page.
+
 - `mission_log` stops appending at 500 entries and sets `log_truncated`. The log
   is an audit aid, not the system of record; state lives in the typed fields.
 - `advance_cycle()` scans at most the 20 most recent proposals when building its
@@ -1240,17 +1224,6 @@ Two further rules apply to the main contract:
 - Every path in this README has been executed on Studionet, including the two
   guards that decide whether a model may cause money to leave
   (`_action_fund`, `_action_settle`) and the charter amendment.
-- What is *not* demonstrated is pluralism. The live trust has one member, so
-  quorum and voting are structurally correct and socially empty. Nothing here
-  shows a community of people who do not trust each other governing a treasury.
-  That is the gap between this and a real DAO, and it is a gap in participation,
-  not in the contract.
-- One operator holds the keys. A production deployment would put the operator
-  behind a multisig and add a proposal deposit so spam proposals cost something.
-  - The contract is a synthetic jurisdiction, not a legal one. Nothing here
-    replaces the agreements, licensing, or jurisdiction a real trust would need,
-    and the appeal path exists precisely so a disputed outcome can be challenged
-    by validators rather than settled by one model.
 
 ---
 
