@@ -41,7 +41,7 @@ than by trust in anybody:
 | Legal property | What it means | What enforces it here |
 | --- | --- | --- |
 | **Entrusted, not owned** | The property is held for beneficiaries; the founder's intent binds the trustee | the charter, which the founder cannot edit directly |
-| **Irrevocable** | Once established it cannot be wound up by whoever created it | changing the charter needs the same assessment and vote as any other act |
+| **Irrevocable** | Once established it cannot be wound up by whoever created it | winding down needs a member vote plus the delay, through a `DISSOLVE` governance proposal naming the recipient |
 | **Held for a purpose** | There is a stated reason for the trust | the mission, and the rulebook derived from the charter |
 | **Administered by a fiduciary** | The trustee owes a duty to beneficiaries, not to itself | the autonomous cycle, which pays grantees and nobody else |
 
@@ -95,9 +95,12 @@ ceiling cannot exceed 50%. A vote may tighten the trust; it can never loosen it 
 They are not parameters of any method, so there is nothing to pass.
 
 **3. A constitutional change waits.** Quorum, the ceiling, membership, the rulebook, the
-evidence sources and the charter move only through a `GOVERNANCE` proposal, and only after a
+evidence sources, dissolution and the charter move only through a `GOVERNANCE` proposal, and only after a
 member vote plus a delay of one hour. The clock is stamped when quorum is *reached*, not when
-the proposal is submitted, so a trust cannot shorten its own delay by re-voting.
+the proposal is submitted, so a trust cannot shorten its own delay by re-voting. Winding down
+without an executed `DISSOLVE` proposal is refused, by the operator's own call and by the
+autonomous cycle alike, and the remainder goes to the authorised recipient rather than
+automatically to the operator.
 
 **4. Model output never becomes constitution.** The committee's verdict is consensus-bound; its
 rationale is recorded prose that nothing depends on. An amendment with no charter text cannot
@@ -142,7 +145,9 @@ outside rather than taken on trust.
 
 A grant pays in two tranches. The first on execution; the second only after
 `review_delivery` finds the delivered work evidenced by a public source the committee could
-actually fetch.
+actually fetch. The second tranche follows the quantised score — the model's 0-100 in
+twenties — because consensus binds the bucket, not the exact number, and money moves only
+on what consensus precisely binds.
 
 ---
 
@@ -168,7 +173,9 @@ executes on quorum alone.
 
 `_pay` takes the bucket it draws from and refuses an unrecognised one before any value moves.
 The lifetime flow is the sum of six buckets plus what is still held, and the reader prints the
-residue if they disagree rather than hiding it.
+residue if they disagree rather than hiding it. The keeper is paid outside `_pay` but inside
+the identity, and at most one percent of the treasury per cycle: `set_policy` stays
+operator-tunable, but no setting turns a permissionless `advance_cycle` into a drain.
 
 ### VM safety
 
@@ -176,13 +183,13 @@ No float division appears anywhere in the contract; a float in consensus-execute
 crashes the VM rather than returning a wrong number. GenLayer's storage layout is positional,
 so a field inserted mid-list silently reinterprets every field after it. The layout is
 therefore frozen and append-only, and `tests/test_fideicommis.py` pins all
-**44 names and types** in order, so an insertion fails the suite rather than passing it.
+**45 names and types** in order, so an insertion fails the suite rather than passing it.
 
 ---
 
 ## The contract
 
-One file, one class, **40 methods** (25 view, 15 write), **44 storage fields**.
+One file, one class, **40 methods** (25 view, 15 write), **45 storage fields**.
 
 ```
 contracts/fideicommis.py
@@ -217,7 +224,7 @@ with no answer at all.
 
 ```
 contracts/fideicommis.py     the trust. one contract, one file, 40 methods
-tests/                       direct mode: 111 test functions, no network, no model calls
+tests/                       direct mode: 119 test functions, no network, no model calls
 tests/integration/           consensus against real GenVM on Studionet
 frontend/                    the reader
 scripts/                     Studionet drivers, all sharing scripts/studionet.cjs

@@ -637,7 +637,7 @@ def test_audit_view_records_the_delivery_reasoning(warp, direct_vm, direct_deplo
     org.review_delivery(proposal_id, "https://example.org/delivery")
     audit = json.loads(org.get_proposal_audit(proposal_id))
     assert audit["delivery_verdict"] == "REJECTED"
-    assert audit["delivery_score"] == 10
+    assert audit["delivery_score"] == 0  # quantised to the consensus-bound bucket floor
     assert audit["delivery_rationale"] == "no evidence of the work"
     with direct_vm.expect_revert("unknown proposal p99"):
         org.get_proposal_audit("p99")
@@ -1298,7 +1298,9 @@ def test_a_member_authored_amendment_still_works(warp, direct_vm, direct_deploy,
 
 
 def test_advance_cycle_wind_down_stops_the_loop(warp, direct_vm, direct_deploy, direct_owner):
-    org = _armed_org(direct_vm, direct_deploy, direct_owner)
+    org = build(direct_vm, direct_deploy, direct_owner, treasury=10 * GEN)
+    authorize_dissolution(org, direct_vm, hx(direct_owner))
+    org.set_policy(0, 0, 60)
     mock_exec(direct_vm, "WIND_DOWN", confidence=75, rationale="mission no longer achievable")
     org.advance_cycle()
     assert org.get_status() == "WINDING_DOWN"
@@ -1355,12 +1357,16 @@ def test_exhausted_treasury_dormants_and_funding_revives(warp, direct_vm, direct
 
 
 def test_operator_can_wind_down_and_dissolve(warp, direct_vm, direct_deploy, direct_owner, direct_bob):
+    """The operator stays the caller, but the authority is the members' vote."""
     org = build(direct_vm, direct_deploy, direct_owner, treasury=3 * GEN)
     with direct_vm.prank(hx(direct_bob)):
         with direct_vm.expect_revert("sender is not the operator or founder"):
             org.wind_down()
     with direct_vm.expect_revert("must be winding down first"):
         org.dissolve()
+    with direct_vm.expect_revert("never authorised"):
+        org.wind_down()
+    authorize_dissolution(org, direct_vm, hx(direct_owner))
     org.wind_down()
     assert org.get_status() == "WINDING_DOWN"
     org.dissolve()
@@ -1370,6 +1376,7 @@ def test_operator_can_wind_down_and_dissolve(warp, direct_vm, direct_deploy, dir
 
 def test_dissolved_org_refuses_new_proposals(warp, direct_vm, direct_deploy, direct_owner):
     org = build(direct_vm, direct_deploy, direct_owner, treasury=3 * GEN)
+    authorize_dissolution(org, direct_vm, hx(direct_owner))
     org.wind_down()
     org.dissolve()
     with direct_vm.expect_revert("fideicommis is dissolved"):
@@ -1450,6 +1457,7 @@ def test_exhausted_treasury_sleeps_even_if_the_model_wants_to_wind_down(warp, di
 
 def test_wind_down_still_works_while_there_is_a_remainder(warp, direct_vm, direct_deploy, direct_owner):
     org = build(direct_vm, direct_deploy, direct_owner, treasury=10 * GEN)
+    authorize_dissolution(org, direct_vm, hx(direct_owner))
     org.set_policy(0, 0, 60)
     mock_exec(direct_vm, "WIND_DOWN", confidence=75, rationale="the charter can no longer be met")
     org.advance_cycle()
@@ -1511,7 +1519,7 @@ def test_funds_are_conserved_through_settlement(warp, direct_vm, direct_deploy, 
     assert_conserved(org, "after the grant")
 
     direct_vm.mock_web(r"example\.org/delivery", {"status": 200, "body": "published"})
-    mock_review(direct_vm, "ACCEPTED", score=50)
+    mock_review(direct_vm, "ACCEPTED", score=60)
     org.review_delivery(pid, "https://example.org/delivery")
     assert_conserved(org, "after the review, before settlement")
     assert flow(org)["settled_atto"] == 0, "reviewing must not move money"
@@ -1519,8 +1527,8 @@ def test_funds_are_conserved_through_settlement(warp, direct_vm, direct_deploy, 
     org.settle_delivery(pid)
     f = assert_conserved(org, "after settlement")
     assert f["granted_atto"] == 2 * GEN
-    assert f["settled_atto"] == GEN  # 50 percent of the 2 GEN budget
-    assert f["treasury_atto"] == 7 * GEN
+    assert f["settled_atto"] == 2 * GEN * 60 // 100  # quantised score 60
+    assert f["treasury_atto"] == 10 * GEN - 2 * GEN - (2 * GEN * 60 // 100)
 
 
 def test_funds_are_conserved_through_burn_and_keeper_reward(warp, direct_vm, direct_deploy, direct_owner):
@@ -1547,6 +1555,7 @@ def test_funds_are_conserved_through_dissolution(warp, direct_vm, direct_deploy,
     pid = compliant_proposal(org, direct_vm, amount=GEN // 2)
     org.cast_vote(pid, True)
     org.execute_proposal(pid)
+    authorize_dissolution(org, direct_vm, hx(direct_owner))
     org.wind_down()
     org.dissolve()
     f = assert_conserved(org, "after dissolution")
@@ -1571,6 +1580,7 @@ def test_a_payout_cannot_escape_the_conservation_buckets(warp, direct_vm, direct
 def test_a_winding_down_fideicommis_refuses_new_funds(warp, direct_vm, direct_deploy, direct_owner):
     """Otherwise the operator could dissolve and collect a late donation."""
     org = build(direct_vm, direct_deploy, direct_owner, treasury=3 * GEN)
+    authorize_dissolution(org, direct_vm, hx(direct_owner))
     org.wind_down()
     direct_vm.value = GEN
     with direct_vm.expect_revert("cannot take funds"):
@@ -1764,6 +1774,7 @@ _STORAGE_LAYOUT = [
     ("lifetime_dissolved", "u256"),
     ("amendment_delay", "u64"),
     ("op_ready_at", "TreeMap[str, u64]"),
+    ("dissolution_recipient", "str"),
 ]
 
 # The field the contract's own comment calls out as the start of the appended
@@ -1831,3 +1842,115 @@ def test_the_append_boundary_still_marks_the_end_of_the_frozen_region():
         "positional and the frozen test above cannot say which fields are safe to "
         "append after, because that judgement currently lives only in this comment."
     )
+
+
+# ---------------------------------------------------------------- portal rejection
+#
+# A steward rejected the submission with four defects, and all four reproduced:
+# the operator could wind down a funded trust and take the remainder with no
+# member vote; keeper rewards had no bound, so set_policy plus a permissionless
+# advance_cycle drained the treasury around every grant control; total_shares
+# left out the changed member, so quorum was computed on the wrong denominator;
+# and the settle payout used the model's exact 0-100 score while consensus only
+# bound the score's bucket of twenty. Each fix below has the test that fails
+# without it.
+
+
+def authorize_dissolution(org, vm, recipient):
+    """Pass a DISSOLVE governance proposal through vote and timelock."""
+    if json.loads(org.get_charter_rules()) == []:
+        bootstrap(org, vm)
+    proposal_id = governance(org, vm, "DISSOLVE:" + recipient, title="Authorise dissolution")
+    cross_timelock(vm, org)
+    org.execute_proposal(proposal_id)
+    return proposal_id
+
+
+def test_dissolve_needs_member_authorisation(warp, direct_vm, direct_deploy, direct_owner, direct_bob):
+    org = build(direct_vm, direct_deploy, direct_owner, treasury=3 * GEN)
+    with direct_vm.expect_revert("never authorised"):
+        org.wind_down()
+    with direct_vm.expect_revert("must be winding down first"):
+        org.dissolve()
+    authorize_dissolution(org, direct_vm, hx(direct_bob))
+    org.wind_down()
+    assert org.get_status() == "WINDING_DOWN"
+    org.dissolve()
+    assert org.get_status() == "DISSOLVED"
+    assert org.get_treasury() == 0
+    assert json.loads(org.get_lifetime_flow())["dissolved_atto"] == 3 * GEN
+
+
+def test_dissolution_pays_the_authorised_recipient(warp, direct_vm, direct_deploy, direct_owner, direct_bob):
+    org = build(direct_vm, direct_deploy, direct_owner, treasury=3 * GEN)
+    authorize_dissolution(org, direct_vm, hx(direct_bob))
+    org.wind_down()
+    org.dissolve()
+    entries = org.get_mission_log(0, 200)
+    assert hx(direct_bob).lower() in entries.lower()
+
+
+def test_autonomous_wind_down_without_authorisation_holds(warp, direct_vm, direct_deploy, direct_owner):
+    org = _armed_org(direct_vm, direct_deploy, direct_owner)
+    mock_exec(direct_vm, "WIND_DOWN", confidence=75, rationale="mission no longer achievable")
+    org.advance_cycle()
+    assert org.get_last_action() == "HOLD"
+    assert org.get_status() == "ACTIVE"
+
+
+def test_keeper_reward_capped_per_cycle(warp, direct_vm, direct_deploy, direct_owner, direct_bob):
+    org = build(direct_vm, direct_deploy, direct_owner, treasury=10 * GEN)
+    org.set_policy(0, 10 * GEN, 60)
+    mock_exec(direct_vm, "HOLD")
+    with direct_vm.prank(hx(direct_bob)):
+        org.advance_cycle()
+    summary = json.loads(org.get_org_summary())
+    assert summary["keeper_paid_atto"] == 10 * GEN // 100
+    assert org.get_treasury() == 10 * GEN - (10 * GEN // 100)
+
+
+def test_shares_change_updates_total_shares(warp, direct_vm, direct_deploy, direct_owner, direct_bob):
+    org = build(direct_vm, direct_deploy, direct_owner)
+    bootstrap(org, direct_vm)
+    proposal_id = governance(org, direct_vm, "MEMBER_SHARES:" + hx(direct_bob) + ":4000")
+    cross_timelock(direct_vm, org)
+    org.execute_proposal(proposal_id)
+    assert json.loads(org.get_constitutional_state())["total_shares"] == 14000
+    proposal_id = governance(org, direct_vm, "MEMBER_SHARES:" + hx(direct_bob) + ":1000")
+    cross_timelock(direct_vm, org)
+    org.execute_proposal(proposal_id)
+    assert json.loads(org.get_constitutional_state())["total_shares"] == 11000
+
+
+def test_sole_member_may_adjust_own_shares(warp, direct_vm, direct_deploy, direct_owner):
+    org = build(direct_vm, direct_deploy, direct_owner)
+    bootstrap(org, direct_vm)
+    proposal_id = governance(org, direct_vm, "MEMBER_SHARES:" + hx(direct_owner) + ":5000")
+    cross_timelock(direct_vm, org)
+    org.execute_proposal(proposal_id)
+    assert json.loads(org.get_constitutional_state())["total_shares"] == 5000
+
+
+def test_settle_payout_uses_the_consensus_bound_score(warp, direct_vm, direct_deploy, direct_owner):
+    org = build(direct_vm, direct_deploy, direct_owner, treasury=10 * GEN)
+    bootstrap(org, direct_vm)
+    proposal_id = _funded_proposal(org, direct_vm, amount=GEN)
+    direct_vm.mock_web(r"example\.org/delivery", {"status": 200, "body": "Release 1.0 published with dataset."})
+    mock_review(direct_vm, "ACCEPTED", 97, "dataset and docs published")
+    org.review_delivery(proposal_id, "https://example.org/delivery")
+    proposal = json.loads(org.get_proposal(proposal_id))
+    assert proposal["delivery_score"] == 80
+    assert proposal["delivery_payout"] == GEN * 80 // 100
+
+
+def test_review_score_buckets_must_match_exactly(warp, direct_vm, direct_deploy, direct_owner):
+    org = build(direct_vm, direct_deploy, direct_owner, treasury=10 * GEN)
+    bootstrap(org, direct_vm)
+    proposal_id = _funded_proposal(org, direct_vm, amount=GEN)
+    direct_vm.mock_web(r"example\.org/delivery", {"status": 200, "body": "Release 1.0 published."})
+    mock_review(direct_vm, "ACCEPTED", 79)
+    org.review_delivery(proposal_id, "https://example.org/delivery")
+    direct_vm.clear_mocks()
+    direct_vm.mock_web(r"example\.org/delivery", {"status": 200, "body": "Release 1.0 published."})
+    mock_review(direct_vm, "ACCEPTED", 85)
+    assert direct_vm.run_validator() is False

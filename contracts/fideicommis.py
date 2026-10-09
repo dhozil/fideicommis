@@ -30,11 +30,17 @@ GOV_FIELD_CEILING = "SPEND_CEILING_BPS"
 GOV_FIELD_SHARES = "MEMBER_SHARES"
 GOV_FIELD_RULES = "CHARTER_RULES"
 GOV_FIELD_EVIDENCE = "EVIDENCE_URLS"
-GOVERNANCE_FIELDS = (GOV_FIELD_QUORUM, GOV_FIELD_CEILING, GOV_FIELD_SHARES, GOV_FIELD_RULES, GOV_FIELD_EVIDENCE)
+GOV_FIELD_DISSOLVE = "DISSOLVE"
+GOVERNANCE_FIELDS = (GOV_FIELD_QUORUM, GOV_FIELD_CEILING, GOV_FIELD_SHARES, GOV_FIELD_RULES, GOV_FIELD_EVIDENCE, GOV_FIELD_DISSOLVE)
 # Hard constitutional limits. These are not policy and cannot be raised by a vote
 # or an amendment: a trust may make itself stricter, never looser than this.
 MIN_QUORUM_BPS = 2500
 MAX_SPEND_CEILING_BPS = 5000
+# The most keeper value one cycle may pay, in basis points of the treasury at
+# the time. set_policy stays operator-tunable for day-to-day operations, but no
+# setting can turn a permissionless advance_cycle into a drain: emptying the
+# estate this way takes a hundred separately logged cycles, not one call.
+MAX_KEEPER_BPS = 100
 # A sanity bound against a nonsense allocation, not a security property. The real
 # limit on one member dominating is the share split itself, and a single member
 # holding everything is exactly the pluralism failure the README admits to.
@@ -410,6 +416,11 @@ class Fideicommis(gl.Contract):
     # proposal that sat unvoted for a month does not execute instantly once
     # approved.
     op_ready_at: TreeMap[str, u64]
+    # Who the members authorised to receive the remainder, through an executed
+    # DISSOLVE governance proposal. Empty until that vote passes and the delay
+    # is crossed, which is what stops an operator winding down a funded trust
+    # on their own authority.
+    dissolution_recipient: str
 
     def __init__(self, org_name: str, mission: str, charter: str, operator: str, evidence_urls: str):
         self.org_name = _clip(org_name, 120)
@@ -443,6 +454,7 @@ class Fideicommis(gl.Contract):
         # set once here, then reachable only through a charter amendment that
         # itself needs a member vote and the timelock.
         self.amendment_delay = u64(DEFAULT_AMENDMENT_DELAY)
+        self.dissolution_recipient = ""
         for url in _parse_url_list(evidence_urls):
             self.evidence_urls.append(url)
         # No upgrader is added here, and that is a decision rather than an omission.
@@ -847,16 +859,26 @@ Return JSON only, with exactly these keys:
                     return False
                 if str(theirs["verdict"]) == DELIVERY_ACCEPTED and int(mine["score"]) < ACCEPT_THRESHOLD:
                     return False
+                # Buckets must match exactly, not within one: the payout below is
+                # computed from the quantised score, so two runs that agree must
+                # produce the identical number. A tolerance of one would let the
+                # leader's 79 and a validator's 80 both pass while paying 60 and
+                # 80 percent of the budget for the "same" consensus.
                 return _buckets_within_tolerance(
                     int(theirs["score"]) // 20,
                     int(mine["score"]) // 20,
-                    1,
+                    0,
                 )
 
             return self._verify(leaders_res, leader_fn, compare)
 
         decision = gl.vm.run_nondet_unsafe(leader_fn, validator_fn)
-        score = int(decision["score"])
+        # The payout is computed from the quantised score, never the raw one.
+        # Consensus binds the verdict and the bucket of twenty; it does not bind
+        # whether the model said 81 or 99. Paying on the raw score would let the
+        # leader's exact phrasing move money that no validator checked, so the
+        # stored score is the bucket floor and the payout follows it.
+        score = (int(decision["score"]) // 20) * 20
         if str(decision["verdict"]) != DELIVERY_ACCEPTED or score < ACCEPT_THRESHOLD:
             payout = 0
         else:
@@ -1018,12 +1040,14 @@ Return JSON only, with exactly these keys:
 
     @gl.public.write
     def wind_down(self) -> None:
-        # Deliberately still an operator power, and this is the argument for it.
-        # Winding down can only start, and only the remainder goes to the operator
-        # when the estate is empty. The operator cannot fund themselves from a
-        # live trust: a grant still needs a member vote and stays under the
-        # ceiling, and dissolving requires the treasury to already be at zero.
+        # Winding down starts only what the members authorised. The operator
+        # remains the caller, but the authority comes from an executed DISSOLVE
+        # governance proposal: a member vote plus the timelock. Without it, an
+        # operator could freeze a live trust (winding down blocks funding and
+        # grants) and then take the remainder, with no vote anywhere.
         self._require_operator()
+        if str(self.dissolution_recipient) == "":
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} dissolution was never authorised by the members, pass a DISSOLVE governance proposal first")
         if str(self.status) != STATUS_ACTIVE:
             raise gl.vm.UserError(f"{ERROR_EXPECTED} only an active fideicommis can wind down")
         self.status = STATUS_WINDING_DOWN
@@ -1034,9 +1058,11 @@ Return JSON only, with exactly these keys:
         self._require_operator()
         if str(self.status) != STATUS_WINDING_DOWN:
             raise gl.vm.UserError(f"{ERROR_EXPECTED} fideicommis must be winding down first")
+        if str(self.dissolution_recipient) == "":
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} dissolution was never authorised by the members, pass a DISSOLVE governance proposal first")
         remainder = int(self.treasury)
         if remainder > 0:
-            self._pay(str(self.operator), remainder, "dissolution", BUCKET_DISSOLUTION)
+            self._pay(str(self.dissolution_recipient), remainder, "dissolution", BUCKET_DISSOLUTION)
         self.status = STATUS_DISSOLVED
         self._log({"event": "dissolved", "remainder_atto": str(remainder)})
 
@@ -1431,19 +1457,21 @@ Return JSON only, with exactly these keys:
                     raise gl.vm.UserError(f"{ERROR_EXPECTED} {account} is not a member, so their shares are already 0")
                 self.members.append(account)
             # Computed before anything is written, so a rejected change cannot
-            # leave the member list already stripped.
+            # leave the member list already stripped. The guard counts the new
+            # shares, not just the rest: a sole member lowering their own
+            # shares still leaves a voting member behind.
             remaining = 0
             for entry in self.members:
                 value = 0 if str(entry) == str(account) else int(self.member_shares.get(Address(str(entry)), u256(0)))
                 remaining = remaining + value
-            if remaining == 0:
+            if remaining + shares == 0:
                 raise gl.vm.UserError(f"{ERROR_EXPECTED} shares must not leave the fideicommis with no voting members")
             if shares == 0:
                 self.member_shares.pop(account, default=None)
                 self.members.remove(account)
             else:
                 self.member_shares[account] = u256(shares)
-            self.total_shares = u256(remaining)
+            self.total_shares = u256(remaining + shares)
             self.proposals[proposal_id].executed = True
             self.executed_count = u256(int(self.executed_count) + 1)
             self._log({"event": "shares_changed", "id": proposal_id, "member": str(account), "shares": str(shares)})
@@ -1470,6 +1498,18 @@ Return JSON only, with exactly these keys:
             self.proposals[proposal_id].executed = True
             self.executed_count = u256(int(self.executed_count) + 1)
             self._log({"event": "rules_cleared", "id": proposal_id})
+            return
+
+        if field == GOV_FIELD_DISSOLVE:
+            # The only way to authorise winding down. The value names who
+            # receives the remainder; it is validated as an address here rather
+            # than trusted from the proposal, and the vote plus the timelock
+            # that got this branch executed are the member approval.
+            recipient = _to_address(value.strip())
+            self.dissolution_recipient = str(recipient)
+            self.proposals[proposal_id].executed = True
+            self.executed_count = u256(int(self.executed_count) + 1)
+            self._log({"event": "dissolution_authorised", "id": proposal_id, "recipient": str(recipient)})
             return
 
         raise gl.vm.UserError(f"{ERROR_EXPECTED} unknown governance field {field}")
@@ -1752,7 +1792,20 @@ Return JSON only:
         burn = int(self.burn_per_cycle)
         if burn > int(self.treasury):
             burn = int(self.treasury)
+        # The keeper setting is operator-tunable, but each cycle may pay at
+        # most MAX_KEEPER_BPS of the treasury. Without this, set_policy plus a
+        # permissionless advance_cycle drains the estate around every grant
+        # control: no assessment, no vote, no ceiling. A hundred separately
+        # logged cycles to empty the treasury is operations; one call is theft.
+        # When one percent rounds to zero the treasury is dust, and dust may go
+        # whole, so a trust can still reach exactly empty and sleep.
+        cap = (int(self.treasury) * MAX_KEEPER_BPS) // 10000
         reward = int(self.keeper_reward)
+        if cap <= 0:
+            if reward > int(self.treasury):
+                reward = int(self.treasury)
+        elif reward > cap:
+            reward = cap
         if reward > int(self.treasury) - burn:
             reward = int(self.treasury) - burn
         if reward < 0:
@@ -1771,8 +1824,6 @@ Return JSON only:
         self.tick_count = u256(int(self.tick_count) + 1)
         self.last_tick_at = u64(now)
         self.next_tick_at = u64(now + int(self.tick_interval))
-        self.last_action = applied
-        self.last_rationale = detail
 
         # An empty treasury always wins over the chosen action. Winding down
         # exists to distribute a remainder to the operator, so a fideicommis
@@ -1783,8 +1834,22 @@ Return JSON only:
                 self.status = STATUS_DORMANT
                 self._log({"event": "dormant", "reason": "treasury exhausted", "cycle": int(self.cycle)})
         elif wind_down_requested:
-            self.status = STATUS_WINDING_DOWN
-            self._log({"event": "wind_down", "trigger": "autonomous", "cycle": int(self.cycle)})
+            # The autonomous loop may only start what the members authorised.
+            # Without an executed DISSOLVE proposal this degrades to HOLD, the
+            # same way an unpayable FUND or SETTLE does: winding down freezes
+            # funding and grants, so starting it without a vote would be a
+            # freeze the operator never had to ask for.
+            if str(self.dissolution_recipient) != "":
+                self.status = STATUS_WINDING_DOWN
+                self._log({"event": "wind_down", "trigger": "autonomous", "cycle": int(self.cycle)})
+            else:
+                applied = ACTION_HOLD
+                detail = _clip("WIND_DOWN degraded to HOLD: dissolution was never authorised by the members", RATIONALE_CLIP)
+
+        # Recorded after the exhaustion and wind-down rules above, because they
+        # can still change what the cycle actually did.
+        self.last_action = applied
+        self.last_rationale = detail
 
     def _action_fund(self, proposal_id: str, amount: int) -> bool:
         if proposal_id == "" or proposal_id not in self.proposals:

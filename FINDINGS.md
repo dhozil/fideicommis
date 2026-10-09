@@ -170,7 +170,7 @@ npm run typecheck --workspace frontend
 npm run build --workspace frontend
 ```
 
-Expect `121 passed, 8 skipped`. The skips are the integration tests, which skip
+  Expect `129 passed, 8 skipped`. The skips are the integration tests, which skip
 themselves when no GenLayer node is reachable. `tests/test_no_float.py` is the
 file to read first if the review is about VM stability.
 
@@ -249,8 +249,9 @@ treasury, so the LLM output is treated as a *proposal*, not an instruction:
       |  |
       |  +--- execute_proposal(CHARTER_AMENDMENT) ---> charter v+1, rulebook cleared
       |
-      +--- advance_cycle() -> WINDING_DOWN -> dissolve() -> DISSOLVED
-              (operator may also wind down or dissolve directly)
+       +--- advance_cycle() -> WINDING_DOWN -> dissolve() -> DISSOLVED
+               (only after an executed DISSOLVE governance proposal names the
+               recipient; the operator's direct calls refuse without it)
 ```
 
 A charter amendment is the adaptation path, and it is deliberately *not* a
@@ -267,7 +268,7 @@ pip install -e ".[dev]"   # the one dependency list is pyproject.toml
 # static checks
 genvm-lint check contracts/fideicommis.py
 
-# 111 test functions, no network, no model calls, ~11 seconds
+ # 119 test functions, no network, no model calls, ~11 seconds
 python -m pytest -v
 
 # the VM stability invariant on its own
@@ -1158,7 +1159,7 @@ someone reads a view that touches the shifted field.
 This is the first rule in `AGENTS.md`, and for a long time nothing enforced it. The
 class carried a comment saying "everything below is APPENDED", and a comment is not
 a test. `test_storage_layout_is_frozen_append_only` in `tests/test_fideicommis.py`
-now pins all 44 field names and types in order, parsed with `ast` rather than a
+now pins all 45 field names and types in order, parsed with `ast` rather than a
 regex so that an annotation inside a method cannot be mistaken for a field. Adding a
 field makes it fail with the name and the position.
 
@@ -1240,7 +1241,49 @@ learned, both now in the script rather than in anyone's memory:
   on `R1`/`TREASURY_CEILING` instead of on their merits — and a verdict is final,
   so they could not be re-judged. The script now refuses to submit anything until
   the treasury reads non-zero.
-- The mission boundary is enforced by the committee, not by the name on the
-  trust. Upkeep proposals naming a page outside the chartered mission were
-  refused with `MISSION` violations even though the amounts were inside the
-  ceiling. The fix was on-theme pages (resilience, mitigation), not larger ones.
+  - The mission boundary is enforced by the committee, not by the name on the
+    trust. Upkeep proposals naming a page outside the chartered mission were
+    refused with `MISSION` violations even though the amounts were inside the
+    ceiling. The fix was on-theme pages (resilience, mitigation), not larger ones.
+
+---
+
+## A rejection that reproduced four for four
+
+A steward rejected the portal submission with four defects, and every one of
+them reproduced against the contract as written. None was a misunderstanding.
+
+1. **The operator could wind down a funded trust and take the remainder with
+   no member vote.** `wind_down()` plus `dissolve()` were operator-only, and
+   `dissolve()` paid the whole treasury to the operator. The comment above
+   `wind_down` even claimed dissolving required an empty treasury, which no
+   line of code enforced. Now dissolution is a `GOVERNANCE` field:
+   `DISSOLVE:<recipient>` passes a member vote plus the timelock, records the
+   authorised recipient in an appended field, and both the operator's calls and
+   the autonomous loop refuse without it. The remainder goes to the authorised
+   address, not automatically to the operator.
+2. **Keeper rewards had no bound.** `set_policy` is operator-only and
+   `keeper_reward` took any value, so one setting plus a permissionless
+   `advance_cycle` drained the treasury around every grant control. Each cycle
+   may now pay at most `MAX_KEEPER_BPS` (1%) of the treasury, enforced where
+   the payout happens rather than where the setting is written, so no setting
+   can turn the keeper path into a drain. Dust below one percent may go whole
+   so a trust can still reach exactly empty and sleep. The burn stays
+   operator-tunable: it destroys value visibly on-chain, rewards nobody, and
+   is conserved in the identity like everything else.
+3. **`total_shares` left out the changed member.** The recompute summed
+   everyone *except* the account being changed, so quorum ran on the wrong
+   denominator afterwards — and a sole member could not adjust their own
+   shares at all, because the remainder read zero. It is now
+   `remaining + shares`, and the no-voting-members guard counts the new
+   shares too.
+4. **The settle payout used precision consensus never bound.** Validators
+   agreed the score's bucket of twenty within one, while the payout used the
+   exact 0-100 — so equally valid consensuses could pay 60 and 80 percent of
+   the same budget. Buckets must now match exactly, and the stored score is
+   the bucket floor: money moves only on what consensus precisely binds, and
+   a 50-59 now earns nothing rather than half.
+
+Eight new tests fail without these fixes, and the suite is 129 passing. The
+deployments that predate this predate the fixes with it; they are superseded,
+not patched, because Studionet cannot upgrade a contract.
