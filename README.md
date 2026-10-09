@@ -295,25 +295,24 @@ its own. The reader opens any of them by address; `/trusts` lists the ones this 
 knows about, and that list is a file in the repository rather than on-chain state, because a
 directory of live trusts is worth keeping and on-chain state owned by one address is not.
 
-### The live trusts
-
-Three sister trusts, all deployed from the current source by the same founder wallet,
-all frozen (`get_code_upgraders` returns `[]`), and each walked the whole path: funded,
-a charter-violating proposal refused by the committee, and two upkeep grants voted on,
-executed, reviewed against their named public pages, and settled. The conservation
-identity `inflow == treasury + granted + settled + dissolved + keeper_paid + burned`
-holds on all three.
+### The live trust
 
 ```
-Nusantara Archive Trust  0xaA49d2FEd44011AE5780573f78f7C66C6aabC848
-Open Science Fund        0x3DaAC199deb81F1d333FcbbB44efC9AF1E9FF3b5
-Pustaka Iklim Trust      0xFA82908b7af9e09c11Ffd0D2E9655CBA238A6b37
+Nusantara Lestari Trust  0x1178AB91ab373c89F82c6174d6c8b7A4020EdE65
 ```
 
-Each is on the explorer at
-`https://explorer-studio.genlayer.com/address/<address>`, and each opens in the
-reader at `/trust/<address>` — or from the directory at `/trusts`, which lists
-these three with what each one did.
+Deployed from the current source by the founder wallet and frozen
+(`get_code_upgraders` returns `[]`). Walked the whole path: funded, a
+charter-violating proposal refused by the committee, two upkeep grants voted
+on, executed, reviewed against their named public pages, and settled at scores
+100 and 80. The conservation identity holds, and the four fixes behind the
+portal resubmission are demonstrated on it: an unauthorised `wind_down` and a
+premature `dissolve` are both refused on-chain, and a keeper reward set to the
+whole treasury pays exactly one percent per cycle.
+
+Earlier deployments predate those fixes and are superseded, not patched,
+because Studionet cannot upgrade a contract. They stay reachable by address;
+the reader lists the current build only.
 
 `gen_getContractCode` returns the source of a deployed contract, and for the address above it
 is byte-identical to `contracts/fideicommis.py`. There is no `codeHash` method in GenLayer;

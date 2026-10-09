@@ -1287,3 +1287,24 @@ them reproduced against the contract as written. None was a misunderstanding.
 Eight new tests fail without these fixes, and the suite is 129 passing. The
 deployments that predate this predate the fixes with it; they are superseded,
 not patched, because Studionet cannot upgrade a contract.
+
+Live evidence on the fixed build (`Nusantara Lestari Trust`,
+`0x1178AB91ab373c89F82c6174d6c8b7A4020EdE65`, deployed source byte-identical
+to the contract, `get_code_upgraders` empty):
+
+- `wind_down` with no executed `DISSOLVE` proposal rolls back with
+  "dissolution was never authorised by the members"; `dissolve` outside
+  winding down rolls back the same way. The trust these were tried on is
+  still `ACTIVE`.
+- A keeper reward set to 100% of the treasury paid exactly 1% for the cycle
+  (`Cap Proof Trust`, `0x2f0cc0adB3E094D371Dba9c1B2B903F7F73C1d12`:
+  `set_policy` `0xed7c5bf90f07ea9d3a8bdd38297e33af965e92af0c6f00be494d73939fa2e915`,
+  `advance_cycle`
+  `0x8185413a8b6f2670c77b151194d716b8c62f895e706cd17c661540bdc6f45c57`,
+  keeper_paid 0.005000 on 0.500000, identity holding, policy restored to
+  zeros afterwards).
+- The two settled grants on Lestari carry quantised scores (100 and 80):
+  what the reader shows is what consensus bound.
+- The authorised-dissolution flow itself (vote, timelock, remainder to the
+  named recipient) is proven in direct mode only, on purpose: running it live
+  would dissolve the showcase.

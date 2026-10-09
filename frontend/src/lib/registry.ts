@@ -19,34 +19,20 @@
 import type { ListedTrust } from "./types";
 
 export const FEATURED_TRUST =
-process.env.NEXT_PUBLIC_FEATURED_TRUST ?? "0xaA49d2FEd44011AE5780573f78f7C66C6aabC848";
+process.env.NEXT_PUBLIC_FEATURED_TRUST ?? "0x1178AB91ab373c89F82c6174d6c8b7A4020EdE65";
 
 export const LISTED_TRUSTS: ListedTrust[] = [
   {
-    // The first of three sister trusts, all deployed from the current source by the
-    // same founder wallet, all frozen (`get_code_upgraders` returns `[]`), and each
-    // walked the whole path: funded, a charter-violating proposal refused by the
-    // committee, and two upkeep grants voted on, executed, reviewed against their
-    // named public pages, and settled. Its grants keep the climate-adaptation
-    // reference article reachable.
-    address: "0xaA49d2FEd44011AE5780573f78f7C66C6aabC848",
+    // Deployed from the fixed source: dissolution needs a member vote plus the
+    // delay, keeper rewards are capped per cycle, shares add up, and settle
+    // payouts follow the consensus-bound score. Walked the whole path: funded,
+    // a charter-violating proposal refused, two upkeep grants settled at 100
+    // and 80. Earlier deployments predate these fixes and are no longer listed;
+    // they stay reachable by address, superseded rather than patched, because
+    // Studionet cannot upgrade a contract.
+    address: "0x1178AB91ab373c89F82c6174d6c8b7A4020EdE65",
     purpose: "Keeps the climate-adaptation reference article reachable. One refusal, two settled grants.",
-    note: "Lived-in: p1 refused (R2/R3/R4), two grants settled at scores 97 and 97.",
-  },
-  {
-    // The second sister trust. Its early upkeep proposals named a page outside the
-    // chartered mission, and the committee refused every one of them — which is the
-    // mission boundary working as designed, not a malfunction. The settled grants
-    // keep the climate-resilience article reachable.
-    address: "0x3DaAC199deb81F1d333FcbbB44efC9AF1E9FF3b5",
-    purpose: "Keeps the climate-resilience article reachable. Off-mission grants refused, two settled.",
-    note: "Lived-in: p1 refused, off-mission proposals refused, two grants settled at scores 85 and 100.",
-  },
-  {
-    // The third sister trust. Its grants keep the climate-mitigation article reachable.
-    address: "0xFA82908b7af9e09c11Ffd0D2E9655CBA238A6b37",
-    purpose: "Keeps the climate-mitigation article reachable. One refusal, two settled grants.",
-    note: "Lived-in: p1 refused, two grants settled at scores 100 and 90.",
+    note: "Current fixed build. p1 refused, two grants settled at scores 100 and 80.",
   },
 ];
 
