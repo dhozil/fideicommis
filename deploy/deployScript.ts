@@ -11,6 +11,7 @@
  * Usage:
  *   node deploy/deployScript.ts                       # deploy one trust and read it back
  *   node deploy/deployScript.ts --name "Open Archive Trust"
+ *   node deploy/deployScript.ts --name "Pustaka Digital Trust" --mission "..." --charter "..." --evidence "https://..."
  *   node deploy/deployScript.ts --dry-run             # print what it would do
  *
  * Keys come from the environment, never from a file in the repository:
@@ -29,7 +30,7 @@ const KEYS = path.join(ROOT, "scripts", "orgkeeper.key");
 const args = parseArgs(process.argv.slice(2));
 const dryRun = args["dry-run"] !== undefined;
 
-const CHARTER = [
+const DEFAULT_CHARTER = [
   "This fideicommis maintains a public archive of climate-adaptation reference material.",
   "Rule 1: no single grant may exceed 10 percent of the treasury.",
   "Rule 2: every grant must be to keep a public web page reachable, and the grant body must name the exact public URL to keep reachable.",
@@ -38,7 +39,12 @@ const CHARTER = [
   "Rule 5: a proposal to change these rules must be decided by committee assessment and by member vote.",
 ].join(" ");
 
-const MISSION = "Keep public climate-adaptation reference material continuously reachable.";
+const DEFAULT_EVIDENCE = "https://en.wikipedia.org/wiki/Climate_change_adaptation";
+
+const CHARTER = args.charter ?? DEFAULT_CHARTER;
+const EVIDENCE = args.evidence ?? DEFAULT_EVIDENCE;
+
+const MISSION = args.mission ?? "Keep public climate-adaptation reference material continuously reachable.";
 const NAME = args.name ?? "Open Archive Trust";
 
 function parseArgs(argv: string[]): Record<string, string> {
@@ -123,7 +129,7 @@ async function main() {
     MISSION,
     CHARTER,
     client.account.address,
-    "https://en.wikipedia.org/wiki/Climate_change_adaptation",
+    EVIDENCE,
   ]);
   if (!created.ok) {
     console.error(`  FAILED at ${created.phase}: ${created.reason}`);

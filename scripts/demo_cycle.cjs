@@ -40,7 +40,7 @@ const { makeDriver, fmt } = require("./studionet.cjs");
 const TRUST = process.argv[2];
 const THEME = process.argv[3];
 if (!TRUST || !/^0x[0-9a-fA-F]{40}$/.test(TRUST)) {
-  console.error("usage: node scripts/demo_cycle.cjs <trust-address> <nusantara|openscience|pustaka>");
+  console.error("usage: node scripts/demo_cycle.cjs <trust-address> <nusantara|openscience|pustaka|digital|sehat>");
   process.exit(1);
 }
 
@@ -57,10 +57,18 @@ const THEMES = {
     page: "https://en.wikipedia.org/wiki/Climate_change_mitigation",
     about: "an open encyclopedia article on climate change mitigation",
   },
+  digital: {
+    page: "https://en.wikipedia.org/wiki/Open-source_software",
+    about: "an open encyclopedia article on open-source software",
+  },
+  sehat: {
+    page: "https://en.wikipedia.org/wiki/Public_health",
+    about: "an open encyclopedia article on public health",
+  },
 };
 const theme = THEMES[THEME];
 if (!theme) {
-  console.error(`unknown theme ${THEME}: nusantara, openscience, or pustaka`);
+  console.error(`unknown theme ${THEME}: nusantara, openscience, pustaka, digital, or sehat`);
   process.exit(1);
 }
 
@@ -79,8 +87,21 @@ function accountFrom(raw) {
   throw new Error("no accepted form for the stored key");
 }
 
-const store = JSON.parse(fs.readFileSync("D:/Genlayer-project/wallet/credentials.json", "utf-8"));
-const client = createClient({ chain: chains.studionet, account: accountFrom(store.privateKey) });
+const store = (() => {
+  const file = process.env.DEMO_KEY_FILE || "D:/Genlayer-project/wallet/.env";
+  const raw = fs.readFileSync(file, "utf-8").trim();
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed.privateKey || parsed.private_key || parsed.key || raw;
+  } catch {
+    const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
+    const named = lines.find((l) => l.startsWith("GENLAYER_DEV_KEY"));
+    const pick = named || lines.find((l) => /^(0x)?[0-9a-fA-F]{64}$/.test(l.split("=").pop().trim()));
+    if (pick) return pick.split("=").pop().trim();
+    return raw;
+  }
+})();
+const client = createClient({ chain: chains.studionet, account: accountFrom(store) });
 const { writeTo, readFrom, balance } = makeDriver(client);
 
 const read = (m, args = []) => readFrom(TRUST, m, args);

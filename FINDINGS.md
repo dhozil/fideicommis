@@ -1308,3 +1308,20 @@ to the contract, `get_code_upgraders` empty):
 - The authorised-dissolution flow itself (vote, timelock, remainder to the
   named recipient) is proven in direct mode only, on purpose: running it live
   would dissolve the showcase.
+
+---
+
+## New founder, three fresh trusts
+
+The operator replaced the founder wallet, so every trust the old wallet had
+founded was superseded at once: their member key no longer exists in the
+repository, which means no further member-gated step can run on them. Their
+settled history stays readable on-chain. A contract cannot be deleted, so
+"removed" here means delisted from the reader and the README, never erased.
+
+Three trusts were deployed from the fixed source under the new wallet, one
+per charter — climate adaptation, digital commons, public health — and each
+walked the whole path cleanly on the first pass: a refusal, two settled
+grants, conservation holding, code byte-identical, upgraders empty. The
+scripts take the key from the wallet file rather than a hardcoded path, so a
+rotation like this one touches no code next time.

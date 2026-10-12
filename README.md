@@ -295,24 +295,31 @@ its own. The reader opens any of them by address; `/trusts` lists the ones this 
 knows about, and that list is a file in the repository rather than on-chain state, because a
 directory of live trusts is worth keeping and on-chain state owned by one address is not.
 
-### The live trust
+### The live trusts
+
+Three trusts, one contract, three charters — all deployed from the current
+source by the current founder wallet, all frozen (`get_code_upgraders`
+returns `[]`), each walked the whole path: funded, a charter-violating
+proposal refused by the committee, two upkeep grants voted on, executed,
+reviewed against their named public pages, and settled. The conservation
+identity holds on all three.
 
 ```
-Nusantara Lestari Trust  0x1178AB91ab373c89F82c6174d6c8b7A4020EdE65
+Nusantara Lestari Trust  0x697f2Aa66E3145116EfC9167168b3C6374223FBC   climate adaptation, settled 100 and 80
+Pustaka Digital Trust    0x575b650fd2F94c5337411Fa7Cb0c2293f38Ec48d   open source, settled 80 and 80
+Nusa Sehat Trust         0x074A390DD5096AB1f3cc56Ac9D30c0CCD5ab347a   public health, settled 100 and 80
 ```
 
-Deployed from the current source by the founder wallet and frozen
-(`get_code_upgraders` returns `[]`). Walked the whole path: funded, a
-charter-violating proposal refused by the committee, two upkeep grants voted
-on, executed, reviewed against their named public pages, and settled at scores
-100 and 80. The conservation identity holds, and the four fixes behind the
-portal resubmission are demonstrated on it: an unauthorised `wind_down` and a
-premature `dissolve` are both refused on-chain, and a keeper reward set to the
-whole treasury pays exactly one percent per cycle.
+Each opens in the reader at `/trust/<address>`, or from the directory at
+`/trusts`. The four fixes behind the portal resubmission are demonstrated
+live: an unauthorised `wind_down` and a premature `dissolve` both roll back,
+a keeper reward set to the whole treasury pays exactly one percent per cycle,
+and settled scores arrive quantised to what consensus bound.
 
-Earlier deployments predate those fixes and are superseded, not patched,
-because Studionet cannot upgrade a contract. They stay reachable by address;
-the reader lists the current build only.
+Earlier deployments predate the current founder wallet or the fixes and are
+superseded, not patched, because Studionet cannot upgrade a contract — and a
+contract cannot be deleted either. They stay reachable by address; the reader
+lists the current three only.
 
 `gen_getContractCode` returns the source of a deployed contract, and for the address above it
 is byte-identical to `contracts/fideicommis.py`. There is no `codeHash` method in GenLayer;

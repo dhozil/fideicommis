@@ -19,19 +19,30 @@
 import type { ListedTrust } from "./types";
 
 export const FEATURED_TRUST =
-process.env.NEXT_PUBLIC_FEATURED_TRUST ?? "0x1178AB91ab373c89F82c6174d6c8b7A4020EdE65";
+process.env.NEXT_PUBLIC_FEATURED_TRUST ?? "0x697f2Aa66E3145116EfC9167168b3C6374223FBC";
 
 export const LISTED_TRUSTS: ListedTrust[] = [
   {
-    // Deployed from the fixed source: dissolution needs a member vote plus the
-    // delay, keeper rewards are capped per cycle, shares add up, and settle
-    // payouts follow the consensus-bound score. Walked the whole path: funded,
-    // a charter-violating proposal refused, two upkeep grants settled at 100
-    // and 80. Earlier deployments predate these fixes and are no longer listed;
-    // they stay reachable by address, superseded rather than patched, because
-    // Studionet cannot upgrade a contract.
-    address: "0x1178AB91ab373c89F82c6174d6c8b7A4020EdE65",
+    // Deployed from the fixed source by the current founder wallet and frozen
+    // (`get_code_upgraders` returns `[]`). Walked the whole path: funded, a
+    // charter-violating proposal refused, two upkeep grants settled at 100 and
+    // 80. Its grants keep the climate-adaptation reference article reachable.
+    address: "0x697f2Aa66E3145116EfC9167168b3C6374223FBC",
     purpose: "Keeps the climate-adaptation reference article reachable. One refusal, two settled grants.",
+    note: "Current fixed build. p1 refused, two grants settled at scores 100 and 80.",
+  },
+  {
+    // The second trust under the current founder: same contract, a different
+    // charter. Its grants keep the open-source reference article reachable.
+    address: "0x575b650fd2F94c5337411Fa7Cb0c2293f38Ec48d",
+    purpose: "Keeps the open-source reference article reachable. One refusal, two settled grants.",
+    note: "Current fixed build. p1 refused, two grants settled at scores 80 and 80.",
+  },
+  {
+    // The third trust under the current founder. Its grants keep the
+    // public-health reference article reachable.
+    address: "0x074A390DD5096AB1f3cc56Ac9D30c0CCD5ab347a",
+    purpose: "Keeps the public-health reference article reachable. One refusal, two settled grants.",
     note: "Current fixed build. p1 refused, two grants settled at scores 100 and 80.",
   },
 ];
