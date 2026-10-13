@@ -87,8 +87,7 @@ function accountFrom(raw) {
   throw new Error("no accepted form for the stored key");
 }
 
-const store = (() => {
-  const file = process.env.DEMO_KEY_FILE || "D:/Genlayer-project/wallet/.env";
+const store = (() => {  const file = process.env.DEMO_KEY_FILE || "D:/Genlayer-project/wallet/.env";
   const raw = fs.readFileSync(file, "utf-8").trim();
   try {
     const parsed = JSON.parse(raw);
@@ -136,6 +135,8 @@ function line(label, value) {
   console.log(`  ${label.padEnd(24)} ${value}`);
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 async function step(label, method, args = [], value = 0n) {
   console.log(`\n[${label}] ${method}`);
   const r = await write(method, args, value);
@@ -150,6 +151,10 @@ async function step(label, method, args = [], value = 0n) {
 (async () => {
   console.log(`  trust ${TRUST} (${THEME})`);
   line("caller", client.account.address);
+  // Grants pay an independent recipient wallet when RECIPIENT_ADDRESS is set,
+  // so member governance and beneficiary are different addresses on purpose.
+  const RECIPIENT = process.env.RECIPIENT_ADDRESS || client.account.address;
+  line("recipient", RECIPIENT);
   line("balance", fmt(await balance()));
   const members = JSON.parse(await read("get_members"));
   line(
@@ -197,7 +202,7 @@ async function step(label, method, args = [], value = 0n) {
       BAD_BODY,
       "GRANT",
       SMALL,
-      client.account.address,
+      RECIPIENT,
     ]);
     p1 = await proposal("p1");
   } else {
@@ -214,6 +219,25 @@ async function step(label, method, args = [], value = 0n) {
 
   let n = (await idsOf()).length;
   let settled = 0;
+  // Retry inconclusive reviews first: UNDETERMINED is retryable by design, so
+  // a transient evidence failure (rate-limited fetches are the usual cause)
+  // does not strand an executed grant. Each pass retries once; reruns resume.
+  for (const id of await idsOf()) {
+    const cur = await proposal(id).catch(() => null);
+    if (!cur || !cur.executed || cur.settled || cur.delivery_verdict !== "UNDETERMINED") continue;
+    if (Number(cur.review_count) >= 3) {
+      console.log(`\n  === ${id}: no reviews left, abandoned ===`);
+      continue;
+    }
+    console.log(`\n  === ${id}: re-review (attempt ${Number(cur.review_count) + 1}) ===`);
+    await sleep(30000);
+    await step(`${id} review`, "review_delivery", [id, theme.page]);
+    const upd = await proposal(id);
+    line("delivery", `${upd.delivery_verdict} (score ${upd.delivery_score})`);
+    if (upd.delivery_verdict === "ACCEPTED" && !upd.settled) {
+      await step(`${id} settle`, "settle_delivery", [id]);
+    }
+  }
   for (const p of await idsOf()) {
     const cur = await proposal(p).catch(() => null);
     if (cur && cur.settled) settled += 1;
@@ -231,7 +255,7 @@ async function step(label, method, args = [], value = 0n) {
       want.body,
       "GRANT",
       GRANT,
-      client.account.address,
+      RECIPIENT,
     ]);
     let p = await proposal(id);
     line("verdict", p.verdict);

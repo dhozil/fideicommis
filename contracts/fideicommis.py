@@ -166,6 +166,27 @@ def _to_address(value) -> Address:
     return Address(value)
 
 
+def _readable_text(html) -> str:
+    """
+    Article text out of page markup, with no dependencies and no floats.
+
+    A fetched page is HTML: the first kilobytes are head metadata, scripts,
+    and styles, not content. Judging that soup means judging nothing — the
+    committee would be scoring navigation chrome while the article sits
+    further down, unread. So script and style blocks go first, then every
+    tag, then the five entities HTML uses, then whitespace is collapsed. A
+    pure function of the input, so every validator that fetches the same page
+    judges the same words.
+    """
+    text = str(html)
+    text = re.sub(r"(?is)<(script|style)[^>]*>.*?</\1>", " ", text)
+    text = re.sub(r"(?s)<!--.*?-->", " ", text)
+    text = re.sub(r"<[^>]+>", " ", text)
+    for entity, char in (("&amp;", "&"), ("&lt;", "<"), ("&gt;", ">"), ("&quot;", '"'), ("&#39;", "'")):
+        text = text.replace(entity, char)
+    return " ".join(text.split())
+
+
 def _first_https_url(text) -> str:
     """
     The first https URL in a text, or "" when there is none.
@@ -903,10 +924,13 @@ class Fideicommis(gl.Contract):
             # exact snapshot behind this verdict: a page that changes afterwards
             # cannot borrow an earlier acceptance, and anyone can re-fetch and
             # compare. Truncation is recorded alongside, because a page cut off
-            # mid-content is partial evidence by construction.
-            judged = _clip(retrieved, EVIDENCE_CLIP)
+            # mid-content is partial evidence by construction. The judged text
+            # is readable article prose, not page markup: raw HTML leads with
+            # kilobytes of head metadata, and scoring that soup is scoring
+            # nothing.
+            judged = _clip(_readable_text(retrieved), EVIDENCE_CLIP)
             fingerprint = hashlib.sha256(judged.encode("utf-8")).hexdigest()
-            truncated = len(retrieved) > EVIDENCE_CLIP
+            truncated = len(_readable_text(retrieved)) > EVIDENCE_CLIP
             prompt = f"""You are the independent reviewer of work delivered under an autonomous fideicommis.
 The work was commissioned with this title:
 --- COMMISSION ---

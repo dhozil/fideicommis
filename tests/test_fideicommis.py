@@ -2120,7 +2120,6 @@ def test_undetermined_review_can_recover_to_accepted(warp, direct_vm, direct_dep
     org.settle_delivery(proposal_id)
     assert json.loads(org.get_proposal(proposal_id))["settled"] is True
 
-
 def test_truncated_evidence_is_logged(warp, direct_vm, direct_deploy, direct_owner):
     org = build(direct_vm, direct_deploy, direct_owner, treasury=10 * GEN)
     bootstrap(org, direct_vm)
@@ -2132,6 +2131,26 @@ def test_truncated_evidence_is_logged(warp, direct_vm, direct_deploy, direct_own
     reviewed = [entry for entry in log if entry.get("event") == "delivery_reviewed"]
     assert len(reviewed) == 1
     assert reviewed[0]["evidence_truncated"] is True
+
+
+def test_review_judges_article_text_not_page_markup(warp, direct_vm, direct_deploy, direct_owner):
+    import hashlib
+
+    org = build(direct_vm, direct_deploy, direct_owner, treasury=10 * GEN)
+    bootstrap(org, direct_vm)
+    proposal_id = _funded_proposal(org, direct_vm, amount=GEN)
+    soup = (
+        "<html><head><title>Climate</title><script>var x = 1;</script>"
+        "<style>.a{color:red}</style></head>"
+        "<body><p>Release 1.0 published with dataset.</p></body></html>"
+    )
+    direct_vm.mock_web(r"example\.org/delivery", {"status": 200, "body": soup})
+    mock_review(direct_vm, "ACCEPTED", 80, "dataset and docs published")
+    org.review_delivery(proposal_id, "https://example.org/delivery")
+    judged = "Climate Release 1.0 published with dataset."
+    want = hashlib.sha256(judged.encode("utf-8")).hexdigest()
+    assert json.loads(org.get_proposal(proposal_id))["evidence_fp"] == want
+    assert want != hashlib.sha256(soup.encode("utf-8")).hexdigest()
 
 
 # ---------------------------------------------------------------- steward round two

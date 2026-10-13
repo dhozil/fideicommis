@@ -245,7 +245,7 @@ with no answer at all.
 
 ```
 contracts/fideicommis.py     the trust. one contract, one file, 40 methods
-tests/                       direct mode: 135 test functions, no network, no model calls
+tests/                       direct mode: 136 test functions, no network, no model calls
 tests/integration/           consensus against real GenVM on Studionet
 frontend/                    the reader
 scripts/                     Studionet drivers, all sharing scripts/studionet.cjs
