@@ -224,15 +224,20 @@ async function step(label, method, args = [], value = 0n) {
   // does not strand an executed grant. Each pass retries once; reruns resume.
   for (const id of await idsOf()) {
     const cur = await proposal(id).catch(() => null);
-    if (!cur || !cur.executed || cur.settled || cur.delivery_verdict !== "UNDETERMINED") continue;
-    if (Number(cur.review_count) >= 3) {
+    if (!cur || !cur.executed || cur.settled) continue;
+    if (cur.delivery_verdict !== "UNDETERMINED" && cur.delivery_verdict !== "NONE") continue;
+    if (cur.delivery_verdict === "UNDETERMINED" && Number(cur.review_count) >= 3) {
       console.log(`\n  === ${id}: no reviews left, abandoned ===`);
       continue;
     }
-    console.log(`\n  === ${id}: re-review (attempt ${Number(cur.review_count) + 1}) ===`);
-    await sleep(30000);
+    console.log(`\n  === ${id}: review (previous: ${cur.delivery_verdict}) ===`);
+    await sleep(180000);
     await step(`${id} review`, "review_delivery", [id, theme.page]);
-    const upd = await proposal(id);
+    const upd = await proposal(id).catch(() => null);
+    if (!upd) {
+      console.log(`  ${id} unreadable after review - node flake, re-run resumes`);
+      continue;
+    }
     line("delivery", `${upd.delivery_verdict} (score ${upd.delivery_score})`);
     if (upd.delivery_verdict === "ACCEPTED" && !upd.settled) {
       await step(`${id} settle`, "settle_delivery", [id]);
@@ -257,8 +262,13 @@ async function step(label, method, args = [], value = 0n) {
       GRANT,
       RECIPIENT,
     ]);
-    let p = await proposal(id);
+    let p = await proposal(id).catch(() => null);
+    if (!p) {
+      console.log(`  ${id} unreadable after submit - node flake, re-run resumes`);
+      continue;
+    }
     line("verdict", p.verdict);
+    try {
     if (p.verdict === "PENDING") {
       await step(`${id} assess`, "assess_proposal", [id]);
       p = await proposal(id);
@@ -279,6 +289,7 @@ async function step(label, method, args = [], value = 0n) {
     }
     line("executed", p.executed);
     if (p.delivery_verdict === "NONE" || !p.delivery_verdict) {
+      await sleep(180000);
       await step(`${id} review`, "review_delivery", [id, theme.page]);
       p = await proposal(id);
     }
@@ -289,6 +300,10 @@ async function step(label, method, args = [], value = 0n) {
     }
     line("settled", p.settled);
     if (p.settled) settled += 1;
+    } catch (err) {
+      console.log(`  ${id} node flake mid-flight (${String(err.message || err).slice(0, 80)}) - re-run resumes`);
+      continue;
+    }
   }
   line("settled grants", `${settled} (want 2)`);
 

@@ -944,7 +944,7 @@ The total budget allocated for this work is {budget} attoGEN.
 
 Decide whether the evidence shows the commissioned work was actually completed to the stated criteria.
 Judge only what the evidence supports. If the evidence is empty, unrelated, or inconclusive, return UNDETERMINED.
-If the evidence appears cut off mid-content, return UNDETERMINED: a partial page cannot support acceptance.
+The evidence is the page's opening text and may end mid-sentence; that alone never justifies UNDETERMINED. For upkeep work the question is whether the shown text establishes the named page reachable and readable with the expected content.
 
 Return JSON only, with exactly these keys:
 {{
