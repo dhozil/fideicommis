@@ -54,7 +54,7 @@ touches one needs a test that fails without it.
    the trust and never loosen it past them.
 8. **Money moves only on what consensus precisely binds.** The cycle's paying
    decision names the proposal the validator checked; the rulebook is agreed
-   sentence by sentence; delivery scores pay by the bucket. The two tranches of
+   rule by rule against the charter; delivery scores pay by the bucket. The two tranches of
    a grant total its amount, tracked per proposal, and delivery review is a
    member act on the URL the grant committed to.
 

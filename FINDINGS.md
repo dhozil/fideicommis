@@ -1341,10 +1341,13 @@ each one pointed at something real:
    from the model.
 2. **Bootstrap agreed on counts while persisting different sentences.** The
    rulebook is what every later assessment judges against. Validators now
-   compare the rules sentence by sentence after whitespace normalisation.
-   Strictness has a price — two models paraphrasing one charter will not
-   agree, and bootstrap rotates until two write the same rules — and that
-   price is stated in the code rather than discovered on the network.
+   check every persisted rule against the charter instead of writing their
+   own: sentence-equality was tried first and rolled back on the live network,
+   because two honest models paraphrase one charter differently and every
+   rotation failed the same way. The boolean question — is each rule
+   supported by a charter obligation — is what independent models agree on,
+   so that is what binds. Proven live: a probe trust derived and persisted
+   three rules on the first attempt.
 3. **Anyone could trigger the irreversible review with any URL.** Delivery
    review is now a member act, and the evidence URL must be the one the grant
    body committed to. A member reviewing an unrelated passing page can no

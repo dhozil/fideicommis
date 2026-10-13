@@ -22,6 +22,7 @@ CHARTER = (
 )
 
 RULEBOOK_PROMPT = r"You are compiling a machine-checkable rulebook"
+SUPPORT_PROMPT = r"You are checking a derived rulebook against the charter"
 ASSESS_PROMPT = r"You are the compliance judge of an autonomous fideicommis"
 REVIEW_PROMPT = r"You are the independent reviewer of work delivered"
 EXEC_PROMPT = r"You are the autonomous executive of a permanently funded fideicommis"
@@ -79,6 +80,10 @@ def hx(address) -> str:
 
 def mock_rulebook(vm, rules=None):
     vm.mock_llm(RULEBOOK_PROMPT, json.dumps(rules if rules is not None else RULEBOOK))
+
+
+def mock_support(vm, supported, rationale="checked against the charter"):
+    vm.mock_llm(SUPPORT_PROMPT, json.dumps({"supported": supported, "rationale": rationale}))
 
 
 def mock_assess(vm, payload):
@@ -462,6 +467,7 @@ def test_bootstrap_rules_validator_agrees(warp, direct_vm, direct_deploy, direct
     org = build(direct_vm, direct_deploy, direct_owner)
     mock_rulebook(direct_vm)
     org.bootstrap_rules()
+    mock_support(direct_vm, True)
     assert direct_vm.run_validator() is True
 
 
@@ -470,7 +476,7 @@ def test_bootstrap_rules_validator_rejects_different_rulebook(warp, direct_vm, d
     mock_rulebook(direct_vm)
     org.bootstrap_rules()
     direct_vm.clear_mocks()
-    mock_rulebook(direct_vm, {"rules": [{"id": "R1", "text": "Only rule", "mandatory": True}]})
+    mock_support(direct_vm, False, "the persisted rules invent obligations")
     assert direct_vm.run_validator() is False
 
 
@@ -2001,10 +2007,19 @@ def test_bootstrap_binds_the_persisted_rules(warp, direct_vm, direct_deploy, dir
     org = build(direct_vm, direct_deploy, direct_owner)
     mock_rulebook(direct_vm)
     org.bootstrap_rules()
+    mock_support(direct_vm, True)
     assert direct_vm.run_validator() is True
     direct_vm.clear_mocks()
-    mock_rulebook(direct_vm, DIFFERENT_RULES)
+    mock_support(direct_vm, False, "R3 is not a charter obligation")
     assert direct_vm.run_validator() is False
+
+
+def test_bootstrap_checks_support_not_identity(warp, direct_vm, direct_deploy, direct_owner):
+    org = build(direct_vm, direct_deploy, direct_owner)
+    mock_rulebook(direct_vm, DIFFERENT_RULES)
+    org.bootstrap_rules()
+    mock_support(direct_vm, True)
+    assert direct_vm.run_validator() is True
 
 
 def test_delivery_review_is_a_member_act(warp, direct_vm, direct_deploy, direct_owner, direct_bob):

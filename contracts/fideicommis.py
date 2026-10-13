@@ -349,36 +349,6 @@ def _buckets_within_tolerance(leader_bucket: int, validator_bucket: int, toleran
     return abs(leader_bucket - validator_bucket) <= tolerance
 
 
-def _norm_rule_text(text) -> str:
-    return " ".join(str(text).split())
-
-
-def _same_rules(first, second) -> bool:
-    """
-    Whether two rulebooks are the same rules, not merely the same count.
-
-    The persisted rulebook is what every later assessment judges against, so a
-    validator that agrees on "five rules, one mandatory" while persisting five
-    different sentences has agreed on nothing. The texts are compared after
-    whitespace normalisation; anything else that differs is a different
-    rulebook. This is strict on purpose, and strictness has a price: two models
-    that paraphrase the same charter will not reach consensus, and bootstrap
-    rotates to a new leader until two of them write the same rules.
-    """
-    if not isinstance(first, list) or not isinstance(second, list):
-        return False
-    if len(first) != len(second):
-        return False
-    for ours, theirs in zip(first, second):
-        if not isinstance(ours, dict) or not isinstance(theirs, dict):
-            return False
-        if str(ours.get("id", "")) != str(theirs.get("id", "")):
-            return False
-        if _norm_rule_text(ours.get("text", "")) != _norm_rule_text(theirs.get("text", "")):
-            return False
-    return True
-
-
 @allow_storage
 class Fideicommis(gl.Contract):
     # Published so a deployment checker can assert these are the numbers, rather
@@ -1806,6 +1776,11 @@ self-contained, checkable statement of what the fideicommis may or may not do, p
 proposal can be tested against it. Ignore descriptive or aspirational sentences that create no
 obligation. Produce between 3 and {MAX_RULES} rules.
 
+The charter states its obligations as numbered sentences. Produce one rule per numbered
+obligation, keeping each rule's wording as close to the charter's sentence as possible:
+quote it rather than paraphrasing it. A checker will verify every rule against the
+charter, so anything the charter never imposes fails downstream.
+
 Return JSON only:
 {{
   "rules": [
@@ -1843,16 +1818,58 @@ Return JSON only:
             return {"rules": rules, "rule_count": len(rules), "mandatory_count": mandatory_count}
 
         def validator_fn(leaders_res) -> bool:
-            def compare(theirs, mine) -> bool:
-                if int(theirs["rule_count"]) < 3 or int(mine["rule_count"]) < 3:
+            # The validator checks the persisted rules against the charter, not
+            # by writing its own rulebook. Re-deriving and comparing sentences
+            # byte for byte does not reach consensus on a live committee: two
+            # honest models paraphrase one charter differently, and every
+            # rotation fails the same way. What two models do agree on is the
+            # boolean question — is every persisted sentence supported by a
+            # charter obligation? — so that is what binds the rulebook. A
+            # leader inventing obligations fails here, which is the hole
+            # sentence-count agreement left open.
+            if not isinstance(leaders_res, gl.vm.Return):
+                return self._handle_leader_error(leaders_res, leader_fn)
+            try:
+                claimed = leaders_res.calldata
+                kept = claimed.get("rules", [])
+                if not isinstance(kept, list) or len(kept) < 3:
                     return False
-                if int(theirs["mandatory_count"]) < 1 or int(mine["mandatory_count"]) < 1:
+                if int(claimed.get("mandatory_count", 0)) < 1:
                     return False
-                if abs(int(theirs["rule_count"]) - int(mine["rule_count"])) > 1:
-                    return False
-                return _same_rules(theirs.get("rules", []), mine.get("rules", []))
+                numbered = []
+                position = 1
+                for entry in kept:
+                    if not isinstance(entry, dict):
+                        return False
+                    numbered.append(str(position) + ". [" + str(entry.get("id", "")) + "] " + str(entry.get("text", "")))
+                    position = position + 1
+            except Exception:
+                return False
+            prompt = f"""You are checking a derived rulebook against the charter it claims to restate.
+Its mission is:
+{mission_text}
 
-            return self._verify(leaders_res, leader_fn, compare)
+Its charter is:
+{_clip(charter_text, 6000)}
+
+The derived rulebook about to be persisted is:
+{chr(10).join(numbered)}
+
+Answer exactly one question: is every rule above directly supported by a binding
+obligation in the charter? A rule that restates, quotes, or faithfully narrows a
+charter obligation is supported. A rule the charter never imposes, or one that
+contradicts it, is not. Wording differences do not matter; obligations do.
+
+Return JSON only, with exactly these keys:
+{{
+  "supported": true or false,
+  "rationale": "one short sentence naming any unsupported rule, or confirming all are supported"
+}}"""
+            try:
+                raw = gl.nondet.exec_prompt(prompt, response_format="json")
+                return bool(_parse_json_object(raw).get("supported", False))
+            except Exception:
+                return False
 
         return gl.vm.run_nondet_unsafe(leader_fn, validator_fn)
 

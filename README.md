@@ -162,8 +162,9 @@ combined.
 task and validators re-derive it independently, so a leader that fabricates a verdict is
 caught rather than trusted. Agreement binds the paying decision to one proposal — a
 leader funding p1 while the validator funds p2 is a disagreement, even at equal amounts —
-and to one rulebook: bootstrap agrees on the rules sentence by sentence, not merely on
-their count. The aggregation over per-source results is a pure function of
+and to one rulebook: the validator checks every persisted rule against the charter
+rather than writing its own, so invented obligations fail while honest paraphrases pass.
+The aggregation over per-source results is a pure function of
 buckets, with no free-form reasoning and no floats, so two validators that see the same
 buckets reach the same answer.
 
