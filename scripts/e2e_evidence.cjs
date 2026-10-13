@@ -132,8 +132,11 @@ async function recipientBalance() {
   for (const id of ids) {
     try {
       const p = JSON.parse(await read("get_proposal", [id]));
-      if (p.kind === "GOVERNANCE" && String(p.body).startsWith("BURN_PER_CYCLE")
-        && (p.verdict === "PENDING" || (p.verdict === "COMPLIANT" && Number(p.approvals) === 0))) burnId = id;
+      if (p.kind !== "GOVERNANCE" || p.executed) continue;
+      if (p.verdict !== "PENDING" && p.verdict !== "COMPLIANT") continue;
+      // The body lives on the audit view, not the proposal summary.
+      const audit = JSON.parse(await read("get_proposal_audit", [id]));
+      if (String(audit.body).startsWith("BURN_PER_CYCLE")) { burnId = id; break; }
     } catch { /* skip */ }
   }
   if (!burnId) {

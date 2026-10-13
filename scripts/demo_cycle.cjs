@@ -105,6 +105,20 @@ const { writeTo, readFrom, balance } = makeDriver(client);
 
 const read = (m, args = []) => readFrom(TRUST, m, args);
 const write = (m, args = [], v = 0n) => writeTo(TRUST, m, args, v);
+// Startup reads retry through throttling storms: when the node is over its
+// rate limit it answers reads with an HTML page, and every unguarded read
+// would end the run before anything is attempted.
+async function patientRead(label, fn, tries = 8) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (attempt >= tries) throw err;
+      console.log(`  ${label} unreadable (attempt ${attempt}) - waiting out the node`);
+      await sleep(90000);
+    }
+  }
+}
 const summary = () => read("get_org_summary").then(JSON.parse);
 const proposal = (id) => read("get_proposal", [id]).then(JSON.parse);
 const idsOf = () => read("get_proposal_ids").then(JSON.parse);
@@ -156,7 +170,7 @@ async function step(label, method, args = [], value = 0n) {
   const RECIPIENT = process.env.RECIPIENT_ADDRESS || client.account.address;
   line("recipient", RECIPIENT);
   line("balance", fmt(await balance()));
-  const members = JSON.parse(await read("get_members"));
+  const members = JSON.parse(await patientRead("members", () => read("get_members")));
   line(
     "is a member",
     members.some((m) => String(m.address).toLowerCase() === client.account.address.toLowerCase())
@@ -164,8 +178,8 @@ async function step(label, method, args = [], value = 0n) {
       : `no — member is ${members[0]?.address}`,
   );
 
-  let s = await summary();
-  line("name", String(await read("get_org_name")));
+  let s = await patientRead("summary", summary);
+  line("name", String(await patientRead("name", () => read("get_org_name"))));
   line("treasury", fmt(s.treasury_atto));
 
   if (Number(s.charter_rule_count) === 0) {
