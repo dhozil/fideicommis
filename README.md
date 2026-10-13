@@ -326,9 +326,9 @@ reviewed against their named public pages, and settled. The conservation
 identity holds on all three.
 
 ```
-Nusantara Lestari Trust  0x4CcA0fee3104c54aD215F4e2888656529DC11eeA   climate adaptation, settled 80 and 100
-Pustaka Digital Trust    0x463BEe50319CBE70235F64A0b6817CF660574296   open source, settled 80 and 80
-Nusa Sehat Trust         0xC4Bb497828178Fc2Fb00f244ceB7459A517f4aae   public health, settled 100 and 80
+Nusantara Lestari Trust  0x9f732c9c87bef27e18AC05F4f600271c2f376e78   climate adaptation, settled 100 and 100
+Pustaka Digital Trust    0x1CAAa72820f37eC1F78C291913662a531b4Fd96f   open source, settled 100 and 80
+Nusa Sehat Trust         0x397A79540D08a043A4Bc2dd426A9EC828B3067c2   public health, settled 80 and 80
 ```
 
 Each opens in the reader at `/trust/<address>`, or from the directory at
