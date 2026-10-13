@@ -230,7 +230,7 @@ with no answer at all.
 
 ```
 contracts/fideicommis.py     the trust. one contract, one file, 40 methods
-tests/                       direct mode: 126 test functions, no network, no model calls
+tests/                       direct mode: 127 test functions, no network, no model calls
 tests/integration/           consensus against real GenVM on Studionet
 frontend/                    the reader
 scripts/                     Studionet drivers, all sharing scripts/studionet.cjs
@@ -311,9 +311,9 @@ reviewed against their named public pages, and settled. The conservation
 identity holds on all three.
 
 ```
-Nusantara Lestari Trust  0x697f2Aa66E3145116EfC9167168b3C6374223FBC   climate adaptation, settled 100 and 80
-Pustaka Digital Trust    0x575b650fd2F94c5337411Fa7Cb0c2293f38Ec48d   open source, settled 80 and 80
-Nusa Sehat Trust         0x074A390DD5096AB1f3cc56Ac9D30c0CCD5ab347a   public health, settled 100 and 80
+Nusantara Lestari Trust  0x4CcA0fee3104c54aD215F4e2888656529DC11eeA   climate adaptation, settled 80 and 100
+Pustaka Digital Trust    0x463BEe50319CBE70235F64A0b6817CF660574296   open source, settled 80 and 80
+Nusa Sehat Trust         0xC4Bb497828178Fc2Fb00f244ceB7459A517f4aae   public health, settled 100 and 80
 ```
 
 Each opens in the reader at `/trust/<address>`, or from the directory at

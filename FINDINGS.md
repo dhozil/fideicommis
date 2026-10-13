@@ -170,7 +170,7 @@ npm run typecheck --workspace frontend
 npm run build --workspace frontend
 ```
 
-  Expect `136 passed, 8 skipped`. The skips are the integration tests, which skip
+  Expect `137 passed, 8 skipped`. The skips are the integration tests, which skip
 themselves when no GenLayer node is reachable. `tests/test_no_float.py` is the
 file to read first if the review is about VM stability.
 
@@ -268,7 +268,7 @@ pip install -e ".[dev]"   # the one dependency list is pyproject.toml
 # static checks
 genvm-lint check contracts/fideicommis.py
 
- # 126 test functions, no network, no model calls, ~11 seconds
+ # 127 test functions, no network, no model calls, ~11 seconds
 python -m pytest -v
 
 # the VM stability invariant on its own
@@ -1366,5 +1366,11 @@ actions, panel, probe list, and tests — rather than hidden behind a
 capability gate.
 
 Seven new contract tests fail without these fixes (each verified against the
-pre-fix source), the suite is 136 passing, and the no-float inventory and
+pre-fix source), the suite is 137 passing, and the no-float inventory and
 the storage pin moved with the code.
+
+The sentence-equality version never reached the directory: its first live
+bootstrap rolled back, which is how the unworkability was found — on a fresh
+deployment, not in review. Three trusts were then deployed from the final
+source and each walked the whole path: a refusal, two settled grants,
+conservation holding, code byte-identical, upgraders empty.
