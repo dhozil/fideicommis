@@ -1905,6 +1905,20 @@ have to name a public URL, does not have to fit the per grant ceiling, and does 
 have to be work anyone would be paid to deliver. What it must satisfy is any rule that
 constrains how the rules may be changed.
 """
+        if kind == KIND_GOVERNANCE:
+            procedure = """
+THIS PROPOSAL CHANGES A GOVERNANCE PARAMETER, NOT A GRANT.
+Its body is a FIELD:VALUE instruction, and the contract enforces the bounds itself:
+quorum cannot fall below its floor, the ceiling cannot rise past its cap, shares
+cannot empty the membership, and unknown fields are refused before any vote. Judge
+the intent, not the form: a well-formed instruction inside those bounds, addressing
+a real governance need, is compliant. It does not have to name a public URL — that
+rule is for grants paying for delivered work, and no money moves here. A rule such
+as "changing any of these rules requires the same approval process as an ordinary
+grant" constrains the PROCESS: this assessment, then the same quorum, then execution
+after the delay. That process is underway right now, so it cannot be a violation
+that the vote has not happened yet.
+"""
         return f"""You are the compliance judge of an autonomous fideicommis.
 Several validators reach this conclusion independently, so decide from the charter itself, not from style or tone.
 {procedure}
