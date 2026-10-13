@@ -101,11 +101,11 @@ const TRUSTS = [
     const touchesCodeSlot = /gl\.storage\.Root|code\.truncate|code\.extend/.test(src);
     console.log(`  declares an upgrade method:        ${hasUpgradeMethod}`);
     console.log(`  touches the code slot:             ${touchesCodeSlot}`);
-    console.log(`  set_code_upgraders is the only code-identity surface: ${/def set_code_upgraders/.test(src)}`);
+    console.log(`  get_code_upgraders view present:   ${/def get_code_upgraders/.test(src)}`);
     console.log("");
     console.log("  Upgradability is opt-in per the docs: an address must appear in the root");
-    console.log("  upgraders list to replace the code, and this contract never adds one unless an");
-    console.log("  operator calls set_code_upgraders. So 'not upgradeable' is a property of these");
+    console.log("  upgraders list to replace the code, and this contract never adds one.");
+    console.log("  So 'not upgradeable' is a property of these");
     console.log("  deployments, not a guarantee the platform makes.");
   }
 })();

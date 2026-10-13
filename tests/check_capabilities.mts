@@ -97,11 +97,13 @@ console.log("=== every write the reader offers is in the list ===");
     check(`${method} is probed`, listed.includes(method));
   }
   check("no method is listed twice", new Set(listed).size === listed.length);
-  // set_code_upgraders was removed with the upgrade path. Keeping it in the list would
-  // advertise a control the source no longer has, which is the dead surface this project
-  // has now removed three times.
+  check("settle_delivery is mapped", listed.includes("settle_delivery"));
+  // set_code_upgraders does not exist anywhere: not in the contract, not in the
+  // probe list, and not as a call in the reader. It was dead surface — a write
+  // only an upgrader could ever perform — and the steward asked for it gone.
   check("set_code_upgraders is gone from the source", !/def set_code_upgraders/.test(contract));
   check("and from the probe list", !listed.includes("set_code_upgraders"));
+  check("and no dead call remains in the reader", !/setCodeUpgraders|["']set_code_upgraders["']/.test(actions + rules));
 }
 
 console.log();
@@ -123,7 +125,7 @@ console.log("=== the panels honour it rather than only receiving it ===");
 {
   check("RulesPanel hides the bootstrap button", /absent\.has\("bootstrap_rules"\)/.test(rules));
   check("RulesPanel hides the policy button", /absent\.has\("set_policy"\)/.test(rules));
-  check("RulesPanel hides the upgraders button", /absent\.has\("set_code_upgraders"\)/.test(rules));
+  check("RulesPanel has no upgraders surface left", !/upgradersList|policy-upgraders/.test(rules));
   check("ProposalActions hides the assess button", /absent\.has\("assess_proposal"\)/.test(actions));
   check("the record carries the list to the panels", /missing=\{record\.missingWrites\}/.test(view));
   check("the record type declares it", /missingWrites: string\[\]/.test(types));

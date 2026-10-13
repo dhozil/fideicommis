@@ -27,7 +27,7 @@ touches one needs a test that fails without it.
 
 1. **Storage fields are appended, never inserted.** GenLayer's layout is
    positional. A field inserted mid-list silently reinterprets every field after
-   it. `test_storage_layout_is_frozen_append_only` pins all 45 names and types in
+   it. `test_storage_layout_is_frozen_append_only` pins all 46 names and types in
    order, and the class carries an `APPEND` comment marking the boundary. Both
    exist because a comment alone is not a test, and this rule went unenforced for
    most of the project's life.
@@ -52,6 +52,11 @@ touches one needs a test that fails without it.
 7. **The hard limits are constants.** `MIN_QUORUM_BPS`,
    `MAX_SPEND_CEILING_BPS` and `MAX_KEEPER_BPS` are not policy. A vote can tighten
    the trust and never loosen it past them.
+8. **Money moves only on what consensus precisely binds.** The cycle's paying
+   decision names the proposal the validator checked; the rulebook is agreed
+   sentence by sentence; delivery scores pay by the bucket. The two tranches of
+   a grant total its amount, tracked per proposal, and delivery review is a
+   member act on the URL the grant committed to.
 
 ## Reading the chain
 

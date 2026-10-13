@@ -116,9 +116,10 @@ def test_divisions_are_inventory_stable(path: Path):
     if path.name == "fideicommis.py":
         assert rendered == [
             "amount * 10000 // treasury",
+            "amount // 2",
             "approved_shares * 10000 // total",
-            "budget * score // 100",
             "confidence // 20",
+            "grant // 2",
             "int(decision['score']) // 20",
             "int(mine['amount_atto']) * 12 // 10",
             "int(mine['score']) // 20",
@@ -126,6 +127,7 @@ def test_divisions_are_inventory_stable(path: Path):
             "int(self.treasury) * int(self.spend_ceiling_bps) // 10000",
             "int(self.treasury) // burn",
             "int(theirs['score']) // 20",
+            "remaining * score // 100",
             "share_bps // 100",
         ]
     else:
@@ -155,5 +157,5 @@ def test_variable_division_denominators_are_guarded():
 def test_payout_never_produces_a_float():
     """Settlement is the one place a division directly moves money."""
     source = (CONTRACTS / "fideicommis.py").read_text(encoding="utf-8")
-    assert "(budget * score) // 100" in source
-    assert "budget * score / 100" not in source
+    assert "(remaining * score) // 100" in source
+    assert "remaining * score / 100" not in source

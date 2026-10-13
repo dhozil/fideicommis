@@ -48,6 +48,7 @@ export const READER_WRITES = [
   "cast_vote",
   "execute_proposal",
   "review_delivery",
+  "settle_delivery",
   "advance_cycle",
 ] as const;
 

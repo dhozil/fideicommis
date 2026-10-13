@@ -3,30 +3,31 @@
 import { useState } from "react";
 import {
   bootstrapRules,
-  setCodeUpgraders,
   setPolicy,
   parseGen,
 } from "@/lib/actions";
-import { isAddress } from "@/lib/address";
 import { gen } from "@/lib/format";
 import { WritePanel, type WriteButton } from "@/components/WritePanel";
 
 /**
- * Derive the rulebook, and the things only the operator may touch.
+ * Derive the rulebook, and the thing only the operator may touch.
  *
  * Two different authorities live on one panel, and that is fixed on purpose. The
  * rulebook call is permissionless — anyone may derive it, once per charter version —
- * while policy and upgraders are `_require_operator`. Showing them together with the
+ * while policy is `_require_operator`. Showing them together with the
  * authority printed on each is how a reader learns which acts need the operator and
  * which do not, rather than finding out from a refused transaction.
  *
- * Two writes that look like they belong here do not, and each of them says why:
+ * Three writes that look like they belong here do not, and each of them says why:
  *
  *   - `set_member_shares` and `set_evidence_urls` both revert unconditionally. They
  *     were removed as powers, not as functions: calling them can only produce the
  *     contract's own refusal, which costs gas to learn. So they are documented here
  *     instead of being offered, and the route to the same outcome — a GOVERNANCE
  *     proposal — is named in full.
+ *   - `set_code_upgraders` does not exist. The upgrade path was removed from the
+ *     contract, so there is no call to offer; code replacement is answered by the
+ *     `get_code_upgraders` view, shown on the provenance panel.
  */
 
 export function RulesPanel({
@@ -50,7 +51,6 @@ export function RulesPanel({
   const [burn, setBurn] = useState(String(policy.burn_per_cycle ?? ""));
   const [keeper, setKeeper] = useState(String(policy.keeper_reward ?? ""));
   const [tick, setTick] = useState(String(policy.tick_interval ?? ""));
-  const [upgraders, setUpgraders] = useState("");
 
   const absent = new Set(missing);
 
@@ -66,17 +66,6 @@ export function RulesPanel({
         : !Number.isInteger(parsedTick) || parsedTick < 60
           ? "The tick interval is a whole number of seconds, at least 60."
           : null;
-
-  const upgradersList = upgraders
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter((entry) => entry !== "");
-  const upgradersProblem =
-    !upgradersList.length
-      ? null
-      : upgradersList.some((entry) => !isAddress(entry))
-        ? "One of those is not an address."
-        : null;
 
   const buttons: WriteButton[] = [];
 
@@ -99,22 +88,6 @@ export function RulesPanel({
       reason: policyProblem ?? "Operator only. Anyone else gets a refusal, not a change.",
       onRun: () =>
         setPolicy(trust, parsedBurn ?? 0n, parsedKeeper ?? 0n, parsedTick, undefined, undefined),
-    });
-  }
-
-  if (!absent.has("set_code_upgraders")) {
-    buttons.push({
-      action: "upgraders",
-      label: "Name the code upgraders",
-      busyLabel: "Naming…",
-      tone: "quiet",
-      disabled: !upgradersList.length || upgradersProblem !== null,
-      reason:
-        upgradersProblem ??
-        (!upgradersList.length
-          ? "Comma-separated addresses."
-          : "Operator only. Anyone else gets a refusal, not a change."),
-      onRun: () => setCodeUpgraders(trust, upgradersList.join(","), undefined, undefined),
     });
   }
 
@@ -145,6 +118,10 @@ export function RulesPanel({
           inputMode="decimal"
         />
       </div>
+      <p className="faint" style={{ fontSize: "0.78rem", margin: "6px 0 0" }}>
+        Each cycle pays at most one percent of the treasury to the keeper, whatever
+        is set here — the contract caps it where the payout happens.
+      </p>
 
       <label className="eyebrow" htmlFor="policy-tick" style={{ marginTop: 10, display: "block" }}>
         Tick interval, in seconds
@@ -164,19 +141,6 @@ export function RulesPanel({
           touch them — it never could, which is why they are not parameters.
         </p>
       ) : null}
-
-      <label className="eyebrow" htmlFor="policy-upgraders" style={{ marginTop: 12, display: "block" }}>
-        Code upgraders, comma-separated
-      </label>
-      <div className="field" style={{ marginTop: 6 }}>
-        <input
-          id="policy-upgraders"
-          value={upgraders}
-          onChange={(event) => setUpgraders(event.target.value)}
-          placeholder="0x…, 0x…"
-          spellCheck={false}
-        />
-      </div>
 
       <div className="notice warn" style={{ marginTop: 14 }}>
         <strong>

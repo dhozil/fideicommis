@@ -170,7 +170,7 @@ npm run typecheck --workspace frontend
 npm run build --workspace frontend
 ```
 
-  Expect `129 passed, 8 skipped`. The skips are the integration tests, which skip
+  Expect `136 passed, 8 skipped`. The skips are the integration tests, which skip
 themselves when no GenLayer node is reachable. `tests/test_no_float.py` is the
 file to read first if the review is about VM stability.
 
@@ -268,7 +268,7 @@ pip install -e ".[dev]"   # the one dependency list is pyproject.toml
 # static checks
 genvm-lint check contracts/fideicommis.py
 
- # 119 test functions, no network, no model calls, ~11 seconds
+ # 126 test functions, no network, no model calls, ~11 seconds
 python -m pytest -v
 
 # the VM stability invariant on its own
@@ -1159,7 +1159,7 @@ someone reads a view that touches the shifted field.
 This is the first rule in `AGENTS.md`, and for a long time nothing enforced it. The
 class carried a comment saying "everything below is APPENDED", and a comment is not
 a test. `test_storage_layout_is_frozen_append_only` in `tests/test_fideicommis.py`
-now pins all 45 field names and types in order, parsed with `ast` rather than a
+now pins all 46 field names and types in order, parsed with `ast` rather than a
 regex so that an annotation inside a method cannot be mistaken for a field. Adding a
 field makes it fail with the name and the position.
 
@@ -1325,3 +1325,43 @@ walked the whole path cleanly on the first pass: a refusal, two settled
 grants, conservation holding, code byte-identical, upgraders empty. The
 scripts take the key from the wallet file rather than a hardcoded path, so a
 rotation like this one touches no code next time.
+
+---
+
+## A steward review that bound everything tighter
+
+A second steward request listed four bindings plus an economy fix, and again
+each one pointed at something real:
+
+1. **The cycle's paying decision named no proposal.** The executive's
+   validator checked the action and the amount but never the id, so a leader
+   funding p1 and a validator funding p2 still agreed. Paying decisions now
+   require the same non-empty proposal id on both sides; the beneficiary
+   needs no separate check because it comes from the stored proposal, never
+   from the model.
+2. **Bootstrap agreed on counts while persisting different sentences.** The
+   rulebook is what every later assessment judges against. Validators now
+   compare the rules sentence by sentence after whitespace normalisation.
+   Strictness has a price — two models paraphrasing one charter will not
+   agree, and bootstrap rotates until two write the same rules — and that
+   price is stated in the code rather than discovered on the network.
+3. **Anyone could trigger the irreversible review with any URL.** Delivery
+   review is now a member act, and the evidence URL must be the one the grant
+   body committed to. A member reviewing an unrelated passing page can no
+   longer settle work that never happened.
+4. **One grant could draw twice its amount.** Execution paid the full grant
+   and settlement paid a bonus on top. Now execution pays half and settlement
+   completes the grant at most: the remainder score-scaled, each payout
+   capped by the ceiling, per-proposal totals tracked in an appended
+   `proposal_paid` map. The 46th storage field.
+
+The reader completed the workflow alongside: the first vote is offerable
+(the gate counted votes instead of reading the verdict), `settle_delivery`
+has its own button and capability entry, review is suppressed once a verdict
+exists, and the dead `set_code_upgraders` call is gone from every layer —
+actions, panel, probe list, and tests — rather than hidden behind a
+capability gate.
+
+Seven new contract tests fail without these fixes (each verified against the
+pre-fix source), the suite is 136 passing, and the no-float inventory and
+the storage pin moved with the code.

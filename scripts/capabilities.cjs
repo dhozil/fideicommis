@@ -2,11 +2,10 @@
 /**
  * What each deployed trust actually exposes.
  *
- * The reader now offers `bootstrap_rules`, `assess_proposal` and `set_code_upgraders`,
- * which were added to the contract after the oldest listed deployment was made. Studionet
- * cannot upgrade a contract, so an address from an earlier build does not have them, and a
- * button for a method that is not there fails at the node with a message that does not say
- * which method was missing.
+ * The reader offers writes that postdate the oldest deployments. Studionet
+ * cannot upgrade a contract, so an address from an earlier build does not have
+ * them, and a button for a method that is not there fails at the node with a
+ * message that does not say which method was missing.
  *
  * Three ways of finding out what a deployment has were tried, and only one worked:
  *
@@ -42,13 +41,13 @@ const ADDRESSES = [
 const WRITES = [
   "fund",
   "set_policy",
-  "set_code_upgraders",
   "bootstrap_rules",
   "submit_proposal",
   "assess_proposal",
   "cast_vote",
   "execute_proposal",
   "review_delivery",
+  "settle_delivery",
   "advance_cycle",
   "set_evidence_urls",
   "set_member_shares",

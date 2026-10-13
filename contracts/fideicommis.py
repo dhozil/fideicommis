@@ -349,6 +349,36 @@ def _buckets_within_tolerance(leader_bucket: int, validator_bucket: int, toleran
     return abs(leader_bucket - validator_bucket) <= tolerance
 
 
+def _norm_rule_text(text) -> str:
+    return " ".join(str(text).split())
+
+
+def _same_rules(first, second) -> bool:
+    """
+    Whether two rulebooks are the same rules, not merely the same count.
+
+    The persisted rulebook is what every later assessment judges against, so a
+    validator that agrees on "five rules, one mandatory" while persisting five
+    different sentences has agreed on nothing. The texts are compared after
+    whitespace normalisation; anything else that differs is a different
+    rulebook. This is strict on purpose, and strictness has a price: two models
+    that paraphrase the same charter will not reach consensus, and bootstrap
+    rotates to a new leader until two of them write the same rules.
+    """
+    if not isinstance(first, list) or not isinstance(second, list):
+        return False
+    if len(first) != len(second):
+        return False
+    for ours, theirs in zip(first, second):
+        if not isinstance(ours, dict) or not isinstance(theirs, dict):
+            return False
+        if str(ours.get("id", "")) != str(theirs.get("id", "")):
+            return False
+        if _norm_rule_text(ours.get("text", "")) != _norm_rule_text(theirs.get("text", "")):
+            return False
+    return True
+
+
 @allow_storage
 class Fideicommis(gl.Contract):
     # Published so a deployment checker can assert these are the numbers, rather
@@ -421,6 +451,11 @@ class Fideicommis(gl.Contract):
     # is crossed, which is what stops an operator winding down a funded trust
     # on their own authority.
     dissolution_recipient: str
+    # How much of each proposal's grant amount has left the treasury already.
+    # A grant pays in two tranches that must total exactly its amount: half on
+    # execution, the score-scaled remainder on settlement. Without this, the
+    # two payouts are checked separately and can total twice the grant.
+    proposal_paid: TreeMap[str, u256]
 
     def __init__(self, org_name: str, mission: str, charter: str, operator: str, evidence_urls: str):
         self.org_name = _clip(org_name, 120)
@@ -467,10 +502,11 @@ class Fideicommis(gl.Contract):
         # it ever deployed could have its code replaced by whoever deployed it — a power
         # that was never listed among the captures, because it was never examined.
         #
-        # The consequence is that `set_code_upgraders` below cannot work for anybody, because
-        # writing the upgraders slot requires already being an upgrader. That is why the
-        # method is gone rather than left to fail: a public method that always reverts is the
-        # same anti-pattern already removed twice in this contract.
+        # The consequence is that no method here can name upgraders, because
+        # writing the upgraders slot requires already being an upgrader. There
+        # used to be one, and it could only ever have worked for an address
+        # that needed no granting — dead public surface, removed rather than
+        # left to fail like the operator setters before it.
         self._log({"event": "genesis", "org": self.org_name, "mission": self.mission})
 
     # ------------------------------------------------------------------
@@ -778,15 +814,21 @@ class Fideicommis(gl.Contract):
         ceiling = self._spend_ceiling_atto()
         if amount > ceiling:
             raise gl.vm.UserError(f"{ERROR_EXPECTED} amount {amount} exceeds policy ceiling {ceiling}")
-        if amount > int(self.treasury):
-            raise gl.vm.UserError(f"{ERROR_EXPECTED} treasury {int(self.treasury)} cannot cover {amount}")
-        self._pay(str(self.proposals[proposal_id].recipient), amount, "grant:" + proposal_id, BUCKET_GRANT)
+        # The first tranche is half the grant, never the whole grant. Paying the
+        # full amount here and a score-scaled bonus at settlement would let one
+        # grant draw twice its amount; the two tranches must total the amount.
+        first = amount // 2
+        if first > int(self.treasury):
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} treasury {int(self.treasury)} cannot cover {first}")
+        if first > 0:
+            self._pay(str(self.proposals[proposal_id].recipient), first, "grant:" + proposal_id, BUCKET_GRANT)
+        self.proposal_paid[proposal_id] = u256(first)
         self.proposals[proposal_id].executed = True
         self.executed_count = u256(int(self.executed_count) + 1)
         self._log({
             "event": "grant_executed",
             "id": proposal_id,
-            "amount_atto": str(amount),
+            "amount_atto": str(first),
             "recipient": str(self.proposals[proposal_id].recipient),
         })
 
@@ -799,6 +841,11 @@ class Fideicommis(gl.Contract):
         self._require_live()
         if proposal_id not in self.proposals:
             raise gl.vm.UserError(f"{ERROR_EXPECTED} unknown proposal {proposal_id}")
+        # Requesting the review is a member act. The verdict is irreversible —
+        # a delivery cannot be re-reviewed — and it decides money downstream,
+        # so anyone must not be able to trigger it with anything.
+        if gl.message.sender_address not in self.members:
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} sender is not a member")
         if str(self.proposals[proposal_id].verdict) != VERDICT_COMPLIANT:
             raise gl.vm.UserError(f"{ERROR_EXPECTED} proposal {proposal_id} is not compliant")
         if not bool(self.proposals[proposal_id].executed):
@@ -808,8 +855,15 @@ class Fideicommis(gl.Contract):
         url = _clip(evidence_url, 512)
         if not url.startswith("https://"):
             raise gl.vm.UserError(f"{ERROR_EXPECTED} evidence_url must start with https://")
-
+        # The evidence must be the url the proposal committed to. A grant body
+        # names the exact public URL to keep reachable, and the review judges
+        # that URL — not whichever page the reviewer felt like passing. Without
+        # this, a member reviews an unrelated page that passes and settles work
+        # that never happened.
         request = str(self.proposals[proposal_id].body)
+        if url not in request:
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} evidence_url must be the url named in the proposal")
+
         criteria = str(self.proposals[proposal_id].title)
         budget = int(self.proposals[proposal_id].amount_atto)
 
@@ -879,10 +933,16 @@ Return JSON only, with exactly these keys:
         # leader's exact phrasing move money that no validator checked, so the
         # stored score is the bucket floor and the payout follows it.
         score = (int(decision["score"]) // 20) * 20
+        # ... and from the remainder, never the whole budget. The first tranche
+        # left at execution; the second completes the grant at most.
+        paid = int(self.proposal_paid.get(proposal_id, u256(0)))
+        remaining = budget - paid
+        if remaining < 0:
+            remaining = 0
         if str(decision["verdict"]) != DELIVERY_ACCEPTED or score < ACCEPT_THRESHOLD:
             payout = 0
         else:
-            payout = (budget * score) // 100
+            payout = (remaining * score) // 100
         if payout > int(self.treasury):
             payout = 0
         self.proposals[proposal_id].delivery_verdict = str(decision["verdict"])
@@ -906,11 +966,26 @@ Return JSON only, with exactly these keys:
             raise gl.vm.UserError(f"{ERROR_EXPECTED} delivery for {proposal_id} is not accepted")
         if bool(self.proposals[proposal_id].settled):
             raise gl.vm.UserError(f"{ERROR_EXPECTED} proposal {proposal_id} was already settled")
+        # The second tranche completes the grant, never exceeds it. The stored
+        # payout was computed against the remainder at review time; re-checked
+        # here against what is actually left, the current ceiling, and the
+        # treasury, so no path pays more than the grant's amount in total.
+        amount = int(self.proposals[proposal_id].amount_atto)
+        paid = int(self.proposal_paid.get(proposal_id, u256(0)))
+        remaining = amount - paid
+        if remaining < 0:
+            remaining = 0
         payout = int(self.proposals[proposal_id].delivery_payout)
+        if payout > remaining:
+            payout = remaining
+        ceiling = int(self._spend_ceiling_atto())
+        if payout > ceiling:
+            payout = ceiling
         if payout > int(self.treasury):
             raise gl.vm.UserError(f"{ERROR_EXPECTED} treasury cannot cover payout {payout}")
         if payout > 0:
             self._pay(str(self.proposals[proposal_id].recipient), payout, "settlement:" + proposal_id, BUCKET_SETTLE)
+        self.proposal_paid[proposal_id] = u256(paid + payout)
         self.proposals[proposal_id].settled = True
         self.settled_count = u256(int(self.settled_count) + 1)
         self._log({"event": "delivery_settled", "id": proposal_id, "payout_atto": str(payout)})
@@ -1012,6 +1087,18 @@ Return JSON only, with exactly these keys:
                 if int(theirs["amount_atto"]) > ceiling:
                     return False
                 if str(theirs["action"]) in PAYING_ACTIONS:
+                    # The paying decision is bound to one proposal: the leader's
+                    # and the validator's must name the same id, and it must be
+                    # a real one. Without this, a leader funding p1 and a
+                    # validator funding p2 still agree — same action, amounts
+                    # within a fifth — and consensus pays whichever proposal
+                    # the leader named. The beneficiary needs no separate check:
+                    # it comes from the stored proposal, never from the model,
+                    # so binding the id binds who is paid.
+                    if str(theirs["proposal_id"]) == "":
+                        return False
+                    if str(theirs["proposal_id"]) != str(mine["proposal_id"]):
+                        return False
                     if int(theirs["amount_atto"]) <= 0:
                         return False
                     if int(mine["amount_atto"]) > 0 and int(theirs["amount_atto"]) > (int(mine["amount_atto"]) * 12) // 10:
@@ -1761,7 +1848,9 @@ Return JSON only:
                     return False
                 if int(theirs["mandatory_count"]) < 1 or int(mine["mandatory_count"]) < 1:
                     return False
-                return abs(int(theirs["rule_count"]) - int(mine["rule_count"])) <= 1
+                if abs(int(theirs["rule_count"]) - int(mine["rule_count"])) > 1:
+                    return False
+                return _same_rules(theirs.get("rules", []), mine.get("rules", []))
 
             return self._verify(leaders_res, leader_fn, compare)
 
@@ -1862,13 +1951,22 @@ Return JSON only:
             return False
         if not self._quorum_met(proposal_id):
             return False
-        payable = int(self.proposals[proposal_id].amount_atto)
+        grant = int(self.proposals[proposal_id].amount_atto)
+        already = int(self.proposal_paid.get(proposal_id, u256(0)))
+        # The autonomous path pays the same first tranche a member vote would:
+        # half the grant, minus anything already paid. The model's amount may
+        # only shrink it, never grow it past the tranche.
+        payable = grant // 2 - already
+        if payable < 0:
+            payable = 0
         if amount > 0 and amount < payable:
             payable = amount
         ceiling = int(self._spend_ceiling_atto())
         if payable > ceiling or payable > int(self.treasury):
             return False
-        self._pay(str(self.proposals[proposal_id].recipient), payable, "autonomous_fund:" + proposal_id, BUCKET_GRANT)
+        if payable > 0:
+            self._pay(str(self.proposals[proposal_id].recipient), payable, "autonomous_fund:" + proposal_id, BUCKET_GRANT)
+        self.proposal_paid[proposal_id] = u256(already + payable)
         self.proposals[proposal_id].executed = True
         self.executed_count = u256(int(self.executed_count) + 1)
         return True
@@ -1880,13 +1978,24 @@ Return JSON only:
             return False
         if not bool(self.proposals[proposal_id].executed) or bool(self.proposals[proposal_id].settled):
             return False
+        grant = int(self.proposals[proposal_id].amount_atto)
+        already = int(self.proposal_paid.get(proposal_id, u256(0)))
+        remaining = grant - already
+        if remaining < 0:
+            remaining = 0
         payable = int(self.proposals[proposal_id].delivery_payout)
+        if payable > remaining:
+            payable = remaining
         if amount > 0 and amount < payable:
             payable = amount
+        ceiling = int(self._spend_ceiling_atto())
+        if payable > ceiling:
+            payable = ceiling
         if payable > int(self.treasury):
             return False
         if payable > 0:
             self._pay(str(self.proposals[proposal_id].recipient), payable, "autonomous_settle:" + proposal_id, BUCKET_SETTLE)
+        self.proposal_paid[proposal_id] = u256(already + payable)
         self.proposals[proposal_id].settled = True
         self.settled_count = u256(int(self.settled_count) + 1)
         return True

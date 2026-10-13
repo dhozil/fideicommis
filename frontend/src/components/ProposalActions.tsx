@@ -7,6 +7,7 @@ import {
   executeProposal,
   parseGen,
   reviewDelivery,
+  settleDelivery,
   submitProposal,
 } from "@/lib/actions";
 import type { Proposal, ProposalAudit } from "@/lib/types";
@@ -81,6 +82,7 @@ export function ProposalActions({
     settled: proposal.settled,
     isMember,
     verdict: proposal.verdict,
+    deliveryVerdict: proposal.delivery_verdict || "NONE",
     hasRules,
     // Quorum met is the most this reader can know. The contract stamps the timelock when
     // quorum is *reached* and keeps that timestamp in `op_ready_at`, which is not a view —
@@ -141,6 +143,15 @@ export function ProposalActions({
       reason:
         evidence.trim().length === 0 ? "A public link to the evidence is required." : undefined,
       onRun: () => reviewDelivery(trust, proposal.id, evidence.trim(), account, undefined),
+    });
+  }
+
+  if (gating.canSettle) {
+    buttons.push({
+      action: "settle",
+      label: "Release the second tranche",
+      busyLabel: "Settling…",
+      onRun: () => settleDelivery(trust, proposal.id, account, undefined),
     });
   }
 

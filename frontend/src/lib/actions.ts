@@ -228,14 +228,6 @@ export const bootstrapRules = (
   onStage?: (stage: WriteStage) => void,
 ) => submit(trust, "bootstrap_rules", [], { from, onStage });
 
-/** Name the addresses allowed to upgrade this contract. Operator only. */
-export const setCodeUpgraders = (
-  trust: string,
-  upgraders: string,
-  from?: string,
-  onStage?: (stage: WriteStage) => void,
-) => submit(trust, "set_code_upgraders", [upgraders], { from, onStage });
-
 export const castVote = (
   trust: string,
   proposalId: string,
@@ -258,6 +250,14 @@ export const reviewDelivery = (
   from?: string,
   onStage?: (stage: WriteStage) => void,
 ) => submit(trust, "review_delivery", [proposalId, evidenceUrl], { from, onStage });
+
+/** Release the second tranche after an ACCEPTED delivery. Anyone may call it. */
+export const settleDelivery = (
+  trust: string,
+  proposalId: string,
+  from?: string,
+  onStage?: (stage: WriteStage) => void,
+) => submit(trust, "settle_delivery", [proposalId], { from, onStage });
 
 /**
  * Refuses a write the contract would certainly reject, before it costs gas.

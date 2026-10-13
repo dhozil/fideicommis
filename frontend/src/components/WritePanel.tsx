@@ -31,11 +31,11 @@ export type WriteAction =
   | "policy"
   | "assess"
   | "bootstrap"
-  | "upgraders"
   | "propose"
   | "vote"
   | "execute"
-  | "review";
+  | "review"
+  | "settle";
 
 export interface WriteButton {
   /** Two buttons with the same action share a lock, which is why approve and reject do. */

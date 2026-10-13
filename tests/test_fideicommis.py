@@ -164,7 +164,8 @@ cross_timelock.at = [0]
 def compliant_proposal(org, vm, amount=GEN, recipient="0x" + "11" * 20, title="Grant for flood mapping"):
     proposal_id = org.submit_proposal(
         title,
-        "Deliver a public flood risk dataset for the Mekong delta with an open licence.",
+        "Deliver a public flood risk dataset for the Mekong delta with an open licence, "
+        "published at https://example.org/delivery for anyone to verify.",
         "GRANT",
         amount,
         recipient,
@@ -379,7 +380,7 @@ def test_a_grant_is_never_timelocked(warp, direct_vm, direct_deploy, direct_owne
     proposal_id = compliant_proposal(org, direct_vm, amount=GEN)
     org.cast_vote(proposal_id, True)
     org.execute_proposal(proposal_id)
-    assert org.get_treasury() == 9 * GEN
+    assert org.get_treasury() == 10 * GEN - GEN // 2
 
 
 def test_governance_cannot_vote_itself_into_existence(warp, direct_vm, direct_deploy, direct_owner, direct_bob):
@@ -524,22 +525,18 @@ def test_there_is_no_way_to_become_an_upgrader(warp, direct_vm, direct_deploy, d
     """
     Neither the operator nor anyone else can add themselves.
 
-    Both methods that could have granted this are gone: `upgrade`, which replaced the code
-    outright, and `set_code_upgraders`, which wrote the upgraders slot. The second could
-    never have worked for anyone but a deployer anyway, because writing that slot requires
-    already being an upgrader — it was dead public surface, the same anti-pattern already
-    removed twice in this contract.
+    Both methods that could have granted this are gone from the source:
+    `upgrade`, which replaced the code outright, and `set_code_upgraders`,
+    which wrote the upgraders slot but could only ever have worked for an
+    address that needed no granting. Calling what does not exist proves
+    nothing, so this asserts absence from the source and emptiness from the
+    view instead.
     """
+    source = Path(ORG_PATH).read_text(encoding="utf-8")
+    assert "def set_code_upgraders" not in source
+    assert "def upgrade(" not in source
     org = build(direct_vm, direct_deploy, direct_owner)
     bootstrap(org, direct_vm)
-
-    with direct_vm.expect_revert():
-        org.set_code_upgraders(hx(direct_owner))
-
-    with direct_vm.prank(hx(direct_owner)):
-        with direct_vm.expect_revert():
-            org.set_code_upgraders(hx(direct_bob))
-
     assert json.loads(org.get_code_upgraders()) == []
 
 
@@ -840,7 +837,7 @@ def test_execute_grant_moves_treasury(warp, direct_vm, direct_deploy, direct_own
     proposal_id = compliant_proposal(org, direct_vm, amount=GEN)
     org.cast_vote(proposal_id, True)
     org.execute_proposal(proposal_id)
-    assert org.get_treasury() == 9 * GEN
+    assert org.get_treasury() == 10 * GEN - GEN // 2
     proposal = json.loads(org.get_proposal(proposal_id))
     assert proposal["executed"] is True
     assert proposal["approvals"] == 1
@@ -860,7 +857,7 @@ def test_execute_requires_quorum(warp, direct_vm, direct_deploy, direct_owner, d
     with direct_vm.prank(direct_bob):
         org.cast_vote(proposal_id, True)
     org.execute_proposal(proposal_id)
-    assert org.get_treasury() == 9 * GEN
+    assert org.get_treasury() == 10 * GEN - GEN // 2
 
 
 def test_execute_respects_the_spend_ceiling(warp, direct_vm, direct_deploy, direct_owner):
@@ -969,7 +966,7 @@ def test_decimal_model_output_is_truncated_not_floated(warp, direct_vm, direct_d
     org.review_delivery(proposal_id, "https://example.org/delivery")
     proposal = json.loads(org.get_proposal(proposal_id))
     assert proposal["delivery_score"] == 80
-    assert proposal["delivery_payout"] == GEN * 80 // 100
+    assert proposal["delivery_payout"] == (GEN // 2) * 80 // 100
 
 
 def test_confidence_given_as_a_string_is_still_an_int(warp, direct_vm, direct_deploy, direct_owner):
@@ -1015,7 +1012,7 @@ def test_review_delivery_computes_payout_from_score(warp, direct_vm, direct_depl
     proposal = json.loads(org.get_proposal(proposal_id))
     assert proposal["delivery_verdict"] == "ACCEPTED"
     assert proposal["delivery_score"] == 80
-    assert proposal["delivery_payout"] == GEN * 80 // 100
+    assert proposal["delivery_payout"] == (GEN // 2) * 80 // 100
 
 
 def test_review_delivery_validator_agrees_and_disagrees(warp, direct_vm, direct_deploy, direct_owner):
@@ -1054,7 +1051,7 @@ def test_settle_delivery_pays_the_remainder(warp, direct_vm, direct_deploy, dire
     org.review_delivery(proposal_id, "https://example.org/delivery")
     before = org.get_treasury()
     org.settle_delivery(proposal_id)
-    assert org.get_treasury() == before - (GEN * 80 // 100)
+    assert org.get_treasury() == before - ((GEN // 2) * 80 // 100)
     assert json.loads(org.get_proposal(proposal_id))["settled"] is True
     with direct_vm.expect_revert("was already settled"):
         org.settle_delivery(proposal_id)
@@ -1179,7 +1176,7 @@ def test_advance_cycle_funds_an_approved_grant(warp, direct_vm, direct_deploy, d
     mock_exec(direct_vm, "FUND", proposal_id=proposal_id, amount=GEN, confidence=85)
     org.advance_cycle()
     assert org.get_last_action() == "FUND"
-    assert org.get_treasury() == 9 * GEN
+    assert org.get_treasury() == 10 * GEN - GEN // 2
     assert json.loads(org.get_proposal(proposal_id))["executed"] is True
 
 
@@ -1196,7 +1193,7 @@ def test_advance_cycle_settles_accepted_work(warp, direct_vm, direct_deploy, dir
     org.advance_cycle()
     assert org.get_last_action() == "SETTLE"
     assert json.loads(org.get_proposal(proposal_id))["settled"] is True
-    assert org.get_treasury() == before - (GEN * 60 // 100)
+    assert org.get_treasury() == before - ((GEN // 2) * 60 // 100)
 
 
 def test_advance_cycle_degrades_an_unpayable_action_to_hold(warp, direct_vm, direct_deploy, direct_owner):
@@ -1506,8 +1503,8 @@ def test_funds_are_conserved_through_grants(warp, direct_vm, direct_deploy, dire
         org.execute_proposal(pid)
 
     f = assert_conserved(org, "after three grants")
-    assert f["granted_atto"] == 3 * GEN
-    assert f["treasury_atto"] == 7 * GEN
+    assert f["granted_atto"] == 3 * (GEN // 2)
+    assert f["treasury_atto"] == 10 * GEN - 3 * (GEN // 2)
     assert f["inflow_atto"] == 10 * GEN
 
 
@@ -1526,9 +1523,9 @@ def test_funds_are_conserved_through_settlement(warp, direct_vm, direct_deploy, 
 
     org.settle_delivery(pid)
     f = assert_conserved(org, "after settlement")
-    assert f["granted_atto"] == 2 * GEN
-    assert f["settled_atto"] == 2 * GEN * 60 // 100  # quantised score 60
-    assert f["treasury_atto"] == 10 * GEN - 2 * GEN - (2 * GEN * 60 // 100)
+    assert f["granted_atto"] == GEN  # first tranche: half of the 2 GEN grant
+    assert f["settled_atto"] == GEN * 60 // 100  # remainder at quantised score 60
+    assert f["treasury_atto"] == 10 * GEN - GEN - (GEN * 60 // 100)
 
 
 def test_funds_are_conserved_through_burn_and_keeper_reward(warp, direct_vm, direct_deploy, direct_owner):
@@ -1560,8 +1557,8 @@ def test_funds_are_conserved_through_dissolution(warp, direct_vm, direct_deploy,
     org.dissolve()
     f = assert_conserved(org, "after dissolution")
     assert f["treasury_atto"] == 0
-    assert f["dissolved_atto"] == 2 * GEN + GEN // 2
-    assert f["granted_atto"] == GEN // 2
+    assert f["dissolved_atto"] == 3 * GEN - GEN // 4
+    assert f["granted_atto"] == GEN // 4  # first tranche: half of the GEN/2 grant
     assert f["inflow_atto"] == 3 * GEN
 
 
@@ -1775,6 +1772,7 @@ _STORAGE_LAYOUT = [
     ("amendment_delay", "u64"),
     ("op_ready_at", "TreeMap[str, u64]"),
     ("dissolution_recipient", "str"),
+    ("proposal_paid", "TreeMap[str, u256]"),
 ]
 
 # The field the contract's own comment calls out as the start of the appended
@@ -1940,7 +1938,7 @@ def test_settle_payout_uses_the_consensus_bound_score(warp, direct_vm, direct_de
     org.review_delivery(proposal_id, "https://example.org/delivery")
     proposal = json.loads(org.get_proposal(proposal_id))
     assert proposal["delivery_score"] == 80
-    assert proposal["delivery_payout"] == GEN * 80 // 100
+    assert proposal["delivery_payout"] == (GEN // 2) * 80 // 100
 
 
 def test_review_score_buckets_must_match_exactly(warp, direct_vm, direct_deploy, direct_owner):
@@ -1954,3 +1952,110 @@ def test_review_score_buckets_must_match_exactly(warp, direct_vm, direct_deploy,
     direct_vm.mock_web(r"example\.org/delivery", {"status": 200, "body": "Release 1.0 published."})
     mock_review(direct_vm, "ACCEPTED", 85)
     assert direct_vm.run_validator() is False
+
+
+# ---------------------------------------------------------------- steward round two
+#
+# Four bindings plus an economy fix. The advance-cycle committee could name a
+# different proposal than the validator checked and still agree; bootstrap
+# agreed on rule counts while persisting different sentences; anyone could
+# trigger the irreversible delivery review with any URL; and a grant could
+# draw twice its amount across execution and settlement.
+
+
+def test_advance_cycle_binds_the_proposal(warp, direct_vm, direct_deploy, direct_owner):
+    org = _armed_org(direct_vm, direct_deploy, direct_owner)
+    first = compliant_proposal(org, direct_vm, amount=GEN)
+    org.cast_vote(first, True)
+    second = compliant_proposal(org, direct_vm, amount=GEN)
+    org.cast_vote(second, True)
+    mock_exec(direct_vm, "FUND", proposal_id=first, amount=GEN, confidence=85)
+    org.advance_cycle()
+    assert org.get_last_action() == "FUND"
+    direct_vm.clear_mocks()
+    mock_exec(direct_vm, "FUND", proposal_id=second, amount=GEN, confidence=85)
+    assert direct_vm.run_validator() is False
+
+
+def test_advance_cycle_agrees_on_the_same_proposal(warp, direct_vm, direct_deploy, direct_owner):
+    org = _armed_org(direct_vm, direct_deploy, direct_owner)
+    proposal_id = compliant_proposal(org, direct_vm, amount=GEN)
+    org.cast_vote(proposal_id, True)
+    mock_exec(direct_vm, "FUND", proposal_id=proposal_id, amount=GEN, confidence=85)
+    org.advance_cycle()
+    assert direct_vm.run_validator() is True
+
+
+DIFFERENT_RULES = {
+    "rules": [
+        {"id": "R1", "text": "Spend at most a tenth of the treasury per grant.", "mandatory": True},
+        {"id": "R2", "text": "Grantees need a public repository.", "mandatory": True},
+        {"id": "R3", "text": "Never fund weapons or surveillance.", "mandatory": True},
+        {"id": "R4", "text": "Evidence first, second tranche after.", "mandatory": True},
+        {"id": "R5", "text": "Rule changes need a vote.", "mandatory": True},
+    ]
+}
+
+
+def test_bootstrap_binds_the_persisted_rules(warp, direct_vm, direct_deploy, direct_owner):
+    org = build(direct_vm, direct_deploy, direct_owner)
+    mock_rulebook(direct_vm)
+    org.bootstrap_rules()
+    assert direct_vm.run_validator() is True
+    direct_vm.clear_mocks()
+    mock_rulebook(direct_vm, DIFFERENT_RULES)
+    assert direct_vm.run_validator() is False
+
+
+def test_delivery_review_is_a_member_act(warp, direct_vm, direct_deploy, direct_owner, direct_bob):
+    org = build(direct_vm, direct_deploy, direct_owner, treasury=10 * GEN)
+    bootstrap(org, direct_vm)
+    proposal_id = _funded_proposal(org, direct_vm, amount=GEN)
+    direct_vm.mock_web(r"example\.org/delivery", {"status": 200, "body": "published"})
+    mock_review(direct_vm, "ACCEPTED", 80)
+    with direct_vm.prank(hx(direct_bob)):
+        with direct_vm.expect_revert("sender is not a member"):
+            org.review_delivery(proposal_id, "https://example.org/delivery")
+
+
+def test_delivery_review_needs_the_committed_url(warp, direct_vm, direct_deploy, direct_owner):
+    org = build(direct_vm, direct_deploy, direct_owner, treasury=10 * GEN)
+    bootstrap(org, direct_vm)
+    proposal_id = org.submit_proposal(
+        "Keep the named page reachable",
+        "Keep this public web page reachable: https://example.org/real-page and nothing else.",
+        "GRANT",
+        GEN,
+        "0x" + "11" * 20,
+    )
+    mock_assess(direct_vm, ASSESS_COMPLIANT)
+    org.assess_proposal(proposal_id)
+    org.cast_vote(proposal_id, True)
+    org.execute_proposal(proposal_id)
+    direct_vm.mock_web(r"example\.org/other", {"status": 200, "body": "unrelated"})
+    mock_review(direct_vm, "ACCEPTED", 80)
+    with direct_vm.expect_revert("must be the url named in the proposal"):
+        org.review_delivery(proposal_id, "https://example.org/other")
+
+
+def test_execute_pays_half_the_grant(warp, direct_vm, direct_deploy, direct_owner):
+    org = build(direct_vm, direct_deploy, direct_owner, treasury=10 * GEN)
+    bootstrap(org, direct_vm)
+    proposal_id = compliant_proposal(org, direct_vm, amount=GEN)
+    org.cast_vote(proposal_id, True)
+    org.execute_proposal(proposal_id)
+    assert org.get_treasury() == 10 * GEN - GEN // 2
+
+
+def test_grant_and_settlement_total_the_amount(warp, direct_vm, direct_deploy, direct_owner):
+    org = build(direct_vm, direct_deploy, direct_owner, treasury=10 * GEN)
+    bootstrap(org, direct_vm)
+    proposal_id = _funded_proposal(org, direct_vm, amount=GEN)
+    direct_vm.mock_web(r"example\.org/delivery", {"status": 200, "body": "published"})
+    mock_review(direct_vm, "ACCEPTED", 100)
+    org.review_delivery(proposal_id, "https://example.org/delivery")
+    org.settle_delivery(proposal_id)
+    lifetime = json.loads(org.get_lifetime_flow())
+    assert lifetime["granted_atto"] == GEN // 2
+    assert lifetime["settled_atto"] == GEN - GEN // 2
+    assert lifetime["granted_atto"] + lifetime["settled_atto"] == GEN

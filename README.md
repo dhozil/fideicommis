@@ -136,18 +136,20 @@ outside rather than taken on trust.
    execute_proposal  ------>  GOVERNANCE and CHARTER_AMENDMENT wait one hour.
                                      |    a GRANT does not: it is a payment, not a
                                      |    change to what the trust is for
-   review_delivery  -------->  the committee fetches the named URL and judges it
-   settle_delivery  -------->  the second tranche is released
+    review_delivery  -------->  member-only; the committee fetches the URL the grant
+                                      named and judges it — no other page counts
+    settle_delivery  -------->  the second tranche completes the grant, at most
                                      |
    advance_cycle  ---------->  anyone may advance it. The committee decides what the
                                   cycle does: burn, pay a keeper, or release a tranche.
 ```
 
-A grant pays in two tranches. The first on execution; the second only after
-`review_delivery` finds the delivered work evidenced by a public source the committee could
-actually fetch. The second tranche follows the quantised score — the model's 0-100 in
-twenties — because consensus binds the bucket, not the exact number, and money moves only
-on what consensus precisely binds.
+A grant pays in two tranches that total exactly its amount. Half on execution; the
+score-scaled remainder only after `review_delivery` finds the delivered work evidenced
+by a public source the committee could actually fetch. Each payout is separately
+capped by the ceiling, and the two are tracked per proposal, so no path pays more
+than the grant — neither the member vote, nor the autonomous cycle, nor the two
+combined.
 
 ---
 
@@ -158,7 +160,10 @@ on what consensus precisely binds.
 `assess_proposal`, `review_delivery` and `advance_cycle` use `gl.nondet.exec_prompt`;
 `review_delivery` also fetches the evidence URL with `gl.nondet.web.get`. The leader runs the
 task and validators re-derive it independently, so a leader that fabricates a verdict is
-caught rather than trusted. The aggregation over per-source results is a pure function of
+caught rather than trusted. Agreement binds the paying decision to one proposal — a
+leader funding p1 while the validator funds p2 is a disagreement, even at equal amounts —
+and to one rulebook: bootstrap agrees on the rules sentence by sentence, not merely on
+their count. The aggregation over per-source results is a pure function of
 buckets, with no free-form reasoning and no floats, so two validators that see the same
 buckets reach the same answer.
 
@@ -183,13 +188,13 @@ No float division appears anywhere in the contract; a float in consensus-execute
 crashes the VM rather than returning a wrong number. GenLayer's storage layout is positional,
 so a field inserted mid-list silently reinterprets every field after it. The layout is
 therefore frozen and append-only, and `tests/test_fideicommis.py` pins all
-**45 names and types** in order, so an insertion fails the suite rather than passing it.
+**46 names and types** in order, so an insertion fails the suite rather than passing it.
 
 ---
 
 ## The contract
 
-One file, one class, **40 methods** (25 view, 15 write), **45 storage fields**.
+One file, one class, **40 methods** (25 view, 15 write), **46 storage fields**.
 
 ```
 contracts/fideicommis.py
@@ -224,7 +229,7 @@ with no answer at all.
 
 ```
 contracts/fideicommis.py     the trust. one contract, one file, 40 methods
-tests/                       direct mode: 119 test functions, no network, no model calls
+tests/                       direct mode: 126 test functions, no network, no model calls
 tests/integration/           consensus against real GenVM on Studionet
 frontend/                    the reader
 scripts/                     Studionet drivers, all sharing scripts/studionet.cjs

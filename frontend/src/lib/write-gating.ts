@@ -25,6 +25,8 @@ export interface GatingInput {
   settled: boolean;
   /** Whether the committee has already ruled. `assess_proposal` refuses unless PENDING. */
   verdict: string;
+  /** The delivery review outcome: NONE until reviewed, then ACCEPTED, REJECTED or UNDETERMINED. */
+  deliveryVerdict: string;
   /** Whether the rulebook has been derived. `assess_proposal` refuses without it. */
   hasRules: boolean;
   /** Whether the connected address holds shares. Voting is a member act. */
@@ -38,6 +40,7 @@ export interface Gating {
   canVote: boolean;
   canExecute: boolean;
   canReview: boolean;
+  canSettle: boolean;
   /** What to say when nothing is available, which is itself a real answer. */
   idleReason: string | null;
 }
@@ -52,20 +55,38 @@ export function gatingFor(proposal: GatingInput): Gating {
   // version of the panel also required zero votes, which the contract never asked for.
   const canAssess = proposal.verdict === "PENDING" && proposal.hasRules;
 
-  const canVote = !proposal.executed && votes > 0 && proposal.isMember;
+  // The contract refuses a vote on a PENDING or NON_COMPLIANT proposal, on an
+  // executed one, and from a non-member — and nothing else. An earlier version
+  // of this gate also required existing votes, which made the first vote
+  // unofferable: a proposal nobody had voted on could never collect its first
+  // vote through the reader. The count was never a contract condition.
+  const canVote =
+    !proposal.executed && proposal.verdict === "COMPLIANT" && proposal.isMember;
   const canExecute = !proposal.executed && votes > 0 && proposal.canExecute;
-  // Only a grant has anything to deliver, so only a grant can be reviewed. Offering a
-  // review on a charter amendment would ask for evidence of something that never shipped.
-  const canReview = isGrant && proposal.executed && !proposal.settled;
+  // Only a grant has anything to deliver, so only a grant can be reviewed — and only
+  // while no verdict exists. The review is irreversible, so offering it after the
+  // committee already ruled invites a transaction the contract refuses.
+  const canReview =
+    isGrant && proposal.executed && !proposal.settled && proposal.deliveryVerdict === "NONE";
+  // Settlement is permissionless like execution: the money follows an ACCEPTED
+  // delivery, not a role. It is offered exactly when the contract would pay.
+  const canSettle =
+    isGrant && proposal.executed && !proposal.settled && proposal.deliveryVerdict === "ACCEPTED";
 
   // A member who has already voted is told they are waiting, not shown a reason about
   // membership. `idleReason` is only reached when *nothing* is available, so the vote
   // branch has to consider that a member may have both voted and still be waiting — the
   // common case, and the one the previous version answered with the wrong sentence.
   let idleReason: string | null = null;
-  if (!canAssess && !canVote && !canExecute && !canReview) {
+  if (!canAssess && !canVote && !canExecute && !canReview && !canSettle) {
     if (proposal.settled) {
       idleReason = "Settled. Nothing further to do here.";
+    } else if (
+      proposal.executed &&
+      proposal.deliveryVerdict !== "NONE" &&
+      proposal.deliveryVerdict !== "ACCEPTED"
+    ) {
+      idleReason = "The committee did not accept the delivery, so there is nothing to settle.";
     } else if (proposal.executed) {
       idleReason = isGrant
         ? "Waiting for a delivery review before the next tranche can be released."
@@ -77,6 +98,8 @@ export function gatingFor(proposal: GatingInput): Gating {
       idleReason = "The charter has no derived rules yet, so nothing can be judged. Derive them first.";
     } else if (votes === 0) {
       idleReason = "The committee has judged it and nobody has voted. Only a member can vote.";
+    } else if (proposal.verdict === "NON_COMPLIANT") {
+      idleReason = "The committee refused it, so there is nothing to vote on.";
     } else if (proposal.canExecute) {
       idleReason = "Nothing available, though the delay has passed. Reload the record.";
     } else if (proposal.isMember) {
@@ -86,7 +109,7 @@ export function gatingFor(proposal: GatingInput): Gating {
     }
   }
 
-  return { canAssess, canVote, canExecute, canReview, idleReason };
+  return { canAssess, canVote, canExecute, canReview, canSettle, idleReason };
 }
 
 /**
