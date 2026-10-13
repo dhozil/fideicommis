@@ -8,9 +8,10 @@ import type { LifetimeFlow } from "@/lib/types";
  *
  * Both sides are read from the contract's own `get_lifetime_flow`. The residue is
  * computed here, from those figures, rather than trusted: the contract exposes
- * `conserved_atto` too, and when the arithmetic below disagrees with it, that
- * disagreement is the thing worth showing. A number copied from the contract and a
- * number checked against it are not the same claim.
+ * `conserved_atto` too — its own conserved total, which equals the inflow when it
+ * adds up — and when that disagrees with the inflow, that disagreement is the
+ * thing worth showing. A number copied from the contract and a number checked
+ * against it are not the same claim.
  */
 
 const BUCKETS = [
@@ -45,11 +46,13 @@ export function Conservation({ flow }: { flow: LifetimeFlow | undefined }) {
   const residue = inflow - out;
   const holds = residue === 0n;
 
-  // The contract publishes its own view of the same fact. If it disagrees with the
-  // arithmetic above, that is a finding, not a formatting problem.
-  const contractResidue = flow?.conserved_atto;
+  // The contract publishes its own view of the same fact: conserved_atto is its
+  // conserved total, equal to the inflow when the ledger adds up. Comparing it
+  // with the residue was a real bug — it disagreed on every balanced trust and
+  // painted a warning where the attoGEN figures balanced exactly.
+  const contractConserved = flow?.conserved_atto;
   const contractAgrees =
-    contractResidue === undefined || atto(contractResidue) === residue;
+    contractConserved === undefined || atto(contractConserved) === inflow;
 
   return (
     <section className="ledger" aria-label="Conservation: where every attoGEN went">
@@ -99,7 +102,7 @@ export function Conservation({ flow }: { flow: LifetimeFlow | undefined }) {
           <p className="notice bad" style={{ maxWidth: "none" }}>
             <strong>This trust does not add up.</strong> The sum of the six buckets is{" "}
             {gen(out)} GEN against {gen(inflow)} GEN received, and the contract&apos;s own{" "}
-            <code>conserved_atto</code> disagrees with that as well. Do not treat any
+            <code>conserved_atto</code> disagrees with the inflow as well. Do not treat any
             figure on this page as meaningful until it is explained.
           </p>
         </div>

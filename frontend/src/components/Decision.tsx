@@ -270,6 +270,17 @@ members,
         </div>
       ) : null}
 
+      {proposal.evidence_fp ? (
+        <div className="record-block">
+          <h5>What exactly was judged</h5>
+          <p className="faint" style={{ fontSize: "0.82rem", marginBottom: 0 }}>
+            sha256 of the evidence text behind this verdict:{" "}
+            <code>{proposal.evidence_fp.slice(0, 16)}…</code> A page that changes
+            afterwards cannot borrow this acceptance — re-fetch it and compare.
+          </p>
+        </div>
+      ) : null}
+
       {audit?.body ? (
         <div className="record-block">
           <h5>The text that was actually voted on</h5>

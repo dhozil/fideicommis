@@ -170,7 +170,7 @@ npm run typecheck --workspace frontend
 npm run build --workspace frontend
 ```
 
-  Expect `137 passed, 8 skipped`. The skips are the integration tests, which skip
+  Expect `146 passed, 8 skipped`. The skips are the integration tests, which skip
 themselves when no GenLayer node is reachable. `tests/test_no_float.py` is the
 file to read first if the review is about VM stability.
 
@@ -268,7 +268,7 @@ pip install -e ".[dev]"   # the one dependency list is pyproject.toml
 # static checks
 genvm-lint check contracts/fideicommis.py
 
- # 127 test functions, no network, no model calls, ~11 seconds
+ # 135 test functions, no network, no model calls, ~11 seconds
 python -m pytest -v
 
 # the VM stability invariant on its own
@@ -1159,7 +1159,7 @@ someone reads a view that touches the shifted field.
 This is the first rule in `AGENTS.md`, and for a long time nothing enforced it. The
 class carried a comment saying "everything below is APPENDED", and a comment is not
 a test. `test_storage_layout_is_frozen_append_only` in `tests/test_fideicommis.py`
-now pins all 46 field names and types in order, parsed with `ast` rather than a
+now pins all 47 field names and types in order, parsed with `ast` rather than a
 regex so that an annotation inside a method cannot be mistaken for a field. Adding a
 field makes it fail with the name and the position.
 
@@ -1369,8 +1369,46 @@ Seven new contract tests fail without these fixes (each verified against the
 pre-fix source), the suite is 137 passing, and the no-float inventory and
 the storage pin moved with the code.
 
-The sentence-equality version never reached the directory: its first live
-bootstrap rolled back, which is how the unworkability was found — on a fresh
-deployment, not in review. Three trusts were then deployed from the final
-source and each walked the whole path: a refusal, two settled grants,
-conservation holding, code byte-identical, upgraders empty.
+  The sentence-equality version never reached the directory: its first live
+  bootstrap rolled back, which is how the unworkability was found - on a fresh
+  deployment, not in review. Three trusts were then deployed from the final
+  source and each walked the whole path: a refusal, two settled grants,
+  conservation holding, code byte-identical, upgraders empty.
+
+  ---
+
+  ## A steward review about money that cannot leave quietly
+
+  The third review was about financial control, and it found four things plus a
+  frontend bug of ours it noticed before we did:
+
+  1. **Burn was one operator call away from everything.** `set_policy` took the
+     burn rate with no bound, so the whole spendable treasury could go in a
+     cycle. The rate is constitutional now (`BURN_PER_CYCLE` moves only through
+     a vote plus the timelock), and `MAX_BURN_BPS` caps each cycle at one
+     percent on top, enforced where the payout happens.
+  2. **Burned GEN was neither destroyed nor provably anywhere.** No documented
+     GenVM primitive destroys native tokens, so the books called it burned
+     while the balance still held it. The semantics are now stated in the code:
+     retirement, not destruction. `get_treasury_reconciliation` shows real
+     balance against treasury plus retired, and a transfer that fails comes
+     back through `__on_errored_message__` with its bucket reversed instead of
+     drifting. The keeper travels through `_pay` like every other payout for
+     the same reason.
+  3. **The reader cried wolf on a balanced ledger.** The conservation panel
+     compared the contract's `conserved_atto` - a total, equal to inflow when
+     balanced - against the residue, which is zero when balanced. Every
+     balanced trust showed "does not add up" while its attoGEN figures balanced
+     exactly, which is the warning the steward reported. It compares against
+     the inflow now, with a regression test pinning the comparison.
+  4. **The review judged whichever page it was handed.** A substring check
+     accepts any URL-prefix of the committed one. The URL must now equal the
+     first https URL in the proposal body exactly; the sha256 of the judged
+     text is stored with the verdict and shown in the reader; truncation is
+     logged; and an inconclusive review may be retried up to three times
+     instead of blocking settlement forever. Acceptance and rejection stay
+     final on the first verdict.
+
+  The member boundary, the exact-URL rule, the fingerprint, the retry bound,
+  the burn vote, the caps, the refund reversal, and the reconciliation shape
+  each have a failing-without-it test. The suite is 146 passing.

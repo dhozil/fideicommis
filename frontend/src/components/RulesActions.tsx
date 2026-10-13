@@ -48,24 +48,20 @@ export function RulesPanel({
    */
   missing?: string[];
 }) {
-  const [burn, setBurn] = useState(String(policy.burn_per_cycle ?? ""));
   const [keeper, setKeeper] = useState(String(policy.keeper_reward ?? ""));
   const [tick, setTick] = useState(String(policy.tick_interval ?? ""));
 
   const absent = new Set(missing);
 
-  const parsedBurn = parseGen(burn);
   const parsedKeeper = parseGen(keeper);
   const parsedTick = Number(tick);
 
   const policyProblem =
-    parsedBurn === null
-      ? "Burn is not a number."
-      : parsedKeeper === null
-        ? "The keeper reward is not a number."
-        : !Number.isInteger(parsedTick) || parsedTick < 60
-          ? "The tick interval is a whole number of seconds, at least 60."
-          : null;
+    parsedKeeper === null
+      ? "The keeper reward is not a number."
+      : !Number.isInteger(parsedTick) || parsedTick < 60
+        ? "The tick interval is a whole number of seconds, at least 60."
+        : null;
 
   const buttons: WriteButton[] = [];
 
@@ -87,7 +83,7 @@ export function RulesPanel({
       disabled: policyProblem !== null,
       reason: policyProblem ?? "Operator only. Anyone else gets a refusal, not a change.",
       onRun: () =>
-        setPolicy(trust, parsedBurn ?? 0n, parsedKeeper ?? 0n, parsedTick, undefined, undefined),
+        setPolicy(trust, parsedKeeper ?? 0n, parsedTick, undefined, undefined),
     });
   }
 
@@ -99,13 +95,6 @@ export function RulesPanel({
           derive them — once per charter version — and the committee does the rest.
         </p>
       ) : null}
-
-      <label className="eyebrow" htmlFor="policy-burn" style={{ marginTop: 4, display: "block" }}>
-        Burn per cycle, in GEN
-      </label>
-      <div className="field" style={{ marginTop: 6 }}>
-        <input id="policy-burn" value={burn} onChange={(event) => setBurn(event.target.value)} inputMode="decimal" />
-      </div>
 
       <label className="eyebrow" htmlFor="policy-keeper" style={{ marginTop: 10, display: "block" }}>
         Keeper reward, in GEN
@@ -122,6 +111,12 @@ export function RulesPanel({
         Each cycle pays at most one percent of the treasury to the keeper, whatever
         is set here — the contract caps it where the payout happens.
       </p>
+      <p className="faint" style={{ fontSize: "0.78rem", margin: "6px 0 0" }}>
+        The burn rate is not set here. Destroying spendable funds takes a{" "}
+        <code>BURN_PER_CYCLE</code> governance proposal — a member vote plus the
+        delay — and no cycle retires more than one percent regardless.
+        Current burn: {gen(BigInt(policy.burn_per_cycle ?? 0))} GEN per cycle.
+      </p>
 
       <label className="eyebrow" htmlFor="policy-tick" style={{ marginTop: 10, display: "block" }}>
         Tick interval, in seconds
@@ -134,9 +129,9 @@ export function RulesPanel({
           inputMode="numeric"
         />
       </div>
-      {parsedBurn !== null && parsedKeeper !== null && parsedTick >= 60 ? (
+      {parsedKeeper !== null && parsedTick >= 60 ? (
         <p className="faint" style={{ fontSize: "0.78rem", margin: "6px 0 0" }}>
-          {gen(parsedBurn)} burned and {gen(parsedKeeper)} paid, every {parsedTick} seconds.
+          {gen(parsedKeeper)} paid to the keeper, every {parsedTick} seconds.
           A vote cannot cross the constitutional floor or ceiling, and this call does not
           touch them — it never could, which is why they are not parameters.
         </p>

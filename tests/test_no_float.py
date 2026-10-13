@@ -123,6 +123,7 @@ def test_divisions_are_inventory_stable(path: Path):
             "int(decision['score']) // 20",
             "int(mine['amount_atto']) * 12 // 10",
             "int(mine['score']) // 20",
+            "int(self.treasury) * MAX_BURN_BPS // 10000",
             "int(self.treasury) * MAX_KEEPER_BPS // 10000",
             "int(self.treasury) * int(self.spend_ceiling_bps) // 10000",
             "int(self.treasury) // burn",

@@ -62,8 +62,9 @@ const INVENTORY: { method: string; used: string; shows: string }[] = [
   { method: "get_mission", used: "the declared purpose, in the contract's own words", shows: "mission" },
   { method: "get_charter_history", used: "every charter text that preceded this one", shows: "provenance" },
   { method: "get_evidence_urls", used: "what the committee is allowed to consult", shows: "provenance" },
-  { method: "get_mission_log", used: "every update to the mission, in order", shows: "mission" },
-];
+    { method: "get_mission_log", used: "every update to the mission, in order", shows: "mission" },
+    { method: "get_treasury_reconciliation", used: "real balance against treasury plus retired", shows: "reconciliation" },
+  ];
 
 /** A short raw answer, clipped. Enough to recognise, not enough to fill a page. */
 function clip(value: unknown, max = 320): string {

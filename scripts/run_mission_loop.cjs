@@ -114,8 +114,11 @@ async function main() {
   console.log(`  ${r.hash}`);
   show("after fund", await summary());
 
-  console.log("\n[3] set_policy()");
-  r = await writeTo(address, "set_policy", [BURN, KEEPER, TICK]);
+    console.log("\n[3] set_policy()");
+    // Burn left set_policy for a BURN_PER_CYCLE governance vote: destroying
+    // spendable funds takes members, not the operator. This loop keeps the
+    // voted rate, whatever it is, and drives the runway it implies.
+    r = await writeTo(address, "set_policy", [KEEPER, TICK]);
   if (!r.ok) {
     console.log(`  FAILED at ${r.phase}: ${r.reason}`);
     process.exit(1);

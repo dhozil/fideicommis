@@ -3,6 +3,7 @@
 from genlayer import *
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import hashlib
 import json
 import re
 
@@ -31,7 +32,8 @@ GOV_FIELD_SHARES = "MEMBER_SHARES"
 GOV_FIELD_RULES = "CHARTER_RULES"
 GOV_FIELD_EVIDENCE = "EVIDENCE_URLS"
 GOV_FIELD_DISSOLVE = "DISSOLVE"
-GOVERNANCE_FIELDS = (GOV_FIELD_QUORUM, GOV_FIELD_CEILING, GOV_FIELD_SHARES, GOV_FIELD_RULES, GOV_FIELD_EVIDENCE, GOV_FIELD_DISSOLVE)
+GOV_FIELD_BURN = "BURN_PER_CYCLE"
+GOVERNANCE_FIELDS = (GOV_FIELD_QUORUM, GOV_FIELD_CEILING, GOV_FIELD_SHARES, GOV_FIELD_RULES, GOV_FIELD_EVIDENCE, GOV_FIELD_DISSOLVE, GOV_FIELD_BURN)
 # Hard constitutional limits. These are not policy and cannot be raised by a vote
 # or an amendment: a trust may make itself stricter, never looser than this.
 MIN_QUORUM_BPS = 2500
@@ -41,6 +43,13 @@ MAX_SPEND_CEILING_BPS = 5000
 # setting can turn a permissionless advance_cycle into a drain: emptying the
 # estate this way takes a hundred separately logged cycles, not one call.
 MAX_KEEPER_BPS = 100
+# The same bound for the burn, for the same reason — with one difference. The
+# keeper setting stays operational; the burn setting does not exist as an
+# operator power at all. It moves only through a BURN_PER_CYCLE governance
+# proposal, because destroying spendable funds is a constitutional act no
+# matter who calls it routine. The cap below is the second lock: even a voted
+# burn cannot take more than this per cycle.
+MAX_BURN_BPS = 100
 # A sanity bound against a nonsense allocation, not a security property. The real
 # limit on one member dominating is the share split itself, and a single member
 # holding everything is exactly the pluralism failure the README admits to.
@@ -78,10 +87,16 @@ RATIONALE_CLIP = 400
 BUCKET_GRANT = "grant"
 BUCKET_SETTLE = "settlement"
 BUCKET_DISSOLUTION = "dissolution"
+BUCKET_KEEPER = "keeper"
 ENTRY_CLIP = 1200
 BODY_CLIP = 4000
 CHARTER_CLIP = 8000
 ACCEPT_THRESHOLD = 50
+# How many times one delivery may be reviewed. UNDETERMINED — the evidence was
+# unreachable, empty, or cut off — may be retried up to this many times, because
+# a transient failure must not permanently block a legitimate settlement.
+# ACCEPTED and REJECTED are final on the first verdict.
+MAX_DELIVERY_REVIEWS = 3
 
 
 @gl.evm.contract_interface
@@ -122,6 +137,13 @@ class Proposal:
     delivery_score: u256
     delivery_payout: u256
     delivery_rationale: str
+    # sha256 of the exact evidence text the committee judged, so a page that
+    # changes afterwards cannot borrow an earlier acceptance. Recorded on every
+    # review, including retries.
+    evidence_fp: str
+    # How many times the delivery has been reviewed. UNDETERMINED may be
+    # retried up to MAX_DELIVERY_REVIEWS; ACCEPTED and REJECTED are final.
+    review_count: u256
     settled: bool
 
 
@@ -142,6 +164,27 @@ def _to_address(value) -> Address:
     if isinstance(value, Address):
         return value
     return Address(value)
+
+
+def _first_https_url(text) -> str:
+    """
+    The first https URL in a text, or "" when there is none.
+
+    Delivery review compares against this with exact string equality, not
+    substring matching: a substring check accepts any URL-prefix of the
+    committed one, so reviewing https://example.org/real would pass for a
+    grant that committed https://example.org/real-page — a different page.
+    """
+    body = str(text)
+    start = body.find("https://")
+    if start < 0:
+        return ""
+    end = len(body)
+    for stop in (" ", "\n", "\t", "\r", '"', "'", ")", "]", ","):
+        hit = body.find(stop, start)
+        if hit >= 0 and hit < end:
+            end = hit
+    return body[start:end]
 
 
 def _parse_url_list(raw) -> list:
@@ -426,6 +469,12 @@ class Fideicommis(gl.Contract):
     # execution, the score-scaled remainder on settlement. Without this, the
     # two payouts are checked separately and can total twice the grant.
     proposal_paid: TreeMap[str, u256]
+    # The last payout's bucket and amount, written by _pay before each transfer
+    # and cleared when a failed transfer is reversed. If a transfer the estate
+    # sent comes back through __on_errored_message__, this is what says which
+    # bucket to credit — otherwise a refund would silently unbalance the books
+    # it just rejoined.
+    pending_payout: str
 
     def __init__(self, org_name: str, mission: str, charter: str, operator: str, evidence_urls: str):
         self.org_name = _clip(org_name, 120)
@@ -503,13 +552,18 @@ class Fideicommis(gl.Contract):
     @gl.public.write
     def set_policy(
         self,
-        burn_per_cycle: int,
         keeper_reward: int,
         tick_interval: int,
     ) -> None:
         """
-        Operational policy only: what the estate burns, what a keeper is paid, and
-        how often the cycle may run.
+        Operational policy only: what a keeper is paid, and how often the
+        cycle may run.
+
+        The burn used to be a third parameter here, which meant a single
+        operator could destroy the estate's spendable funds in one call with
+        no vote and no delay. It is constitutional now: BURN_PER_CYCLE moves
+        only through a governance proposal, and MAX_BURN_BPS caps what any
+        cycle may take no matter what value got voted in.
 
         Quorum and the spend ceiling are deliberately NOT parameters here. They
         used to be, which meant a single operator could raise the ceiling to
@@ -522,14 +576,12 @@ class Fideicommis(gl.Contract):
         self._require_operator()
         if int(tick_interval) < 60:
             raise gl.vm.UserError(f"{ERROR_EXPECTED} tick_interval must be at least 60 seconds")
-        if int(burn_per_cycle) < 0 or int(keeper_reward) < 0:
-            raise gl.vm.UserError(f"{ERROR_EXPECTED} burn and keeper reward cannot be negative")
-        self.burn_per_cycle = u256(burn_per_cycle)
+        if int(keeper_reward) < 0:
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} keeper reward cannot be negative")
         self.keeper_reward = u256(keeper_reward)
         self.tick_interval = u64(tick_interval)
         self._log({
             "event": "policy",
-            "burn_per_cycle": str(burn_per_cycle),
             "keeper_reward": str(keeper_reward),
             "tick_interval": str(tick_interval),
             "quorum_bps": str(int(self.quorum_bps)),
@@ -633,6 +685,8 @@ class Fideicommis(gl.Contract):
             delivery_score=u256(0),
             delivery_payout=u256(0),
             delivery_rationale="",
+            evidence_fp="",
+            review_count=u256(0),
             settled=False,
         )
         self.proposal_violations[proposal_id] = []
@@ -811,34 +865,48 @@ class Fideicommis(gl.Contract):
         self._require_live()
         if proposal_id not in self.proposals:
             raise gl.vm.UserError(f"{ERROR_EXPECTED} unknown proposal {proposal_id}")
-        # Requesting the review is a member act. The verdict is irreversible —
-        # a delivery cannot be re-reviewed — and it decides money downstream,
-        # so anyone must not be able to trigger it with anything.
+        # Requesting the review is a member act. The verdict decides money
+        # downstream, so anyone must not be able to trigger it with anything.
         if gl.message.sender_address not in self.members:
             raise gl.vm.UserError(f"{ERROR_EXPECTED} sender is not a member")
         if str(self.proposals[proposal_id].verdict) != VERDICT_COMPLIANT:
             raise gl.vm.UserError(f"{ERROR_EXPECTED} proposal {proposal_id} is not compliant")
         if not bool(self.proposals[proposal_id].executed):
             raise gl.vm.UserError(f"{ERROR_EXPECTED} proposal {proposal_id} is not funded yet")
-        if str(self.proposals[proposal_id].delivery_verdict) != DELIVERY_NONE:
+        previous = str(self.proposals[proposal_id].delivery_verdict)
+        if previous != DELIVERY_NONE and previous != DELIVERY_UNDETERMINED:
             raise gl.vm.UserError(f"{ERROR_EXPECTED} delivery for {proposal_id} was already reviewed")
+        count = int(self.proposals[proposal_id].review_count)
+        if count >= MAX_DELIVERY_REVIEWS:
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} delivery for {proposal_id} has no reviews left")
+        self.proposals[proposal_id].review_count = u256(count + 1)
         url = _clip(evidence_url, 512)
         if not url.startswith("https://"):
             raise gl.vm.UserError(f"{ERROR_EXPECTED} evidence_url must start with https://")
-        # The evidence must be the url the proposal committed to. A grant body
-        # names the exact public URL to keep reachable, and the review judges
-        # that URL — not whichever page the reviewer felt like passing. Without
-        # this, a member reviews an unrelated page that passes and settles work
-        # that never happened.
+        # The evidence must be exactly the url the proposal committed to. The
+        # grant body names one public URL; the review judges that URL. A
+        # substring check would accept any URL-prefix of the committed one, so
+        # reviewing a shorter address would pass for a grant that named a
+        # longer page — a different page. Exact equality closes that.
         request = str(self.proposals[proposal_id].body)
-        if url not in request:
-            raise gl.vm.UserError(f"{ERROR_EXPECTED} evidence_url must be the url named in the proposal")
+        committed = _first_https_url(request)
+        if committed == "" or url != committed:
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} evidence_url must be the exact url named in the proposal")
 
         criteria = str(self.proposals[proposal_id].title)
         budget = int(self.proposals[proposal_id].amount_atto)
 
         def leader_fn():
             retrieved = _fetch_source(url)
+            # What the committee judges is what gets fingerprinted. Pages are
+            # mutable and fetches are clipped, so the sha256 below pins the
+            # exact snapshot behind this verdict: a page that changes afterwards
+            # cannot borrow an earlier acceptance, and anyone can re-fetch and
+            # compare. Truncation is recorded alongside, because a page cut off
+            # mid-content is partial evidence by construction.
+            judged = _clip(retrieved, EVIDENCE_CLIP)
+            fingerprint = hashlib.sha256(judged.encode("utf-8")).hexdigest()
+            truncated = len(retrieved) > EVIDENCE_CLIP
             prompt = f"""You are the independent reviewer of work delivered under an autonomous fideicommis.
 The work was commissioned with this title:
 --- COMMISSION ---
@@ -847,11 +915,12 @@ and this scope, which is also the acceptance criteria:
 --- SCOPE ---
 {_clip(request, 3000)}
 --- DELIVERED EVIDENCE (public source) ---
-{_clip(retrieved, EVIDENCE_CLIP)}
+{judged}
 The total budget allocated for this work is {budget} attoGEN.
 
 Decide whether the evidence shows the commissioned work was actually completed to the stated criteria.
 Judge only what the evidence supports. If the evidence is empty, unrelated, or inconclusive, return UNDETERMINED.
+If the evidence appears cut off mid-content, return UNDETERMINED: a partial page cannot support acceptance.
 
 Return JSON only, with exactly these keys:
 {{
@@ -871,6 +940,8 @@ Return JSON only, with exactly these keys:
                 "verdict": verdict,
                 "score": score,
                 "rationale": _clip(_pick_str(payload, ("rationale", "reasoning", "explanation")), RATIONALE_CLIP),
+                "fingerprint": fingerprint,
+                "truncated": truncated,
             }
 
         def validator_fn(leaders_res) -> bool:
@@ -919,12 +990,15 @@ Return JSON only, with exactly these keys:
         self.proposals[proposal_id].delivery_score = u256(score)
         self.proposals[proposal_id].delivery_payout = u256(payout)
         self.proposals[proposal_id].delivery_rationale = str(decision["rationale"])
+        self.proposals[proposal_id].evidence_fp = str(decision.get("fingerprint", ""))
         self._log({
             "event": "delivery_reviewed",
             "id": proposal_id,
             "verdict": str(decision["verdict"]),
             "score": str(score),
             "payout_atto": str(payout),
+            "evidence_fp": str(decision.get("fingerprint", "")),
+            "evidence_truncated": bool(decision.get("truncated", False)),
         })
 
     @gl.public.write
@@ -1191,7 +1265,7 @@ Return JSON only, with exactly these keys:
 
     @gl.public.view
     def get_lifetime_flow(self) -> str:
-        burn = int(self.lifetime_outflow) - int(self.lifetime_granted) - int(self.lifetime_settled) - int(self.lifetime_dissolved)
+        burn = int(self.lifetime_outflow) - int(self.lifetime_granted) - int(self.lifetime_settled) - int(self.lifetime_dissolved) - int(self.total_keeper_paid)
         conserved = (
             int(self.treasury)
             + int(self.lifetime_granted)
@@ -1213,6 +1287,34 @@ Return JSON only, with exactly these keys:
             # the treasury, or left as a grant, a settlement, a dissolution
             # remainder, a burn, or a keeper reward.
             "conserved_atto": conserved,
+        }, sort_keys=True)
+
+    @gl.public.view
+    def get_treasury_reconciliation(self) -> str:
+        """
+        The internal books against the chain's own balance.
+
+        Burn is retirement, not destruction: no documented GenVM primitive
+        destroys native GEN, so burned value stays physically in the contract
+        account and leaves the spendable treasury forever. That makes this
+        view meaningful rather than trivial — real balance must equal
+        spendable treasury plus retired, always:
+
+            real_balance == treasury + burned
+
+        Every payout path keeps it so: _pay debits the treasury per transfer,
+        burn debits without transferring, and __on_errored_message__ re-credits
+        both sides when a transfer comes back. If this view ever disagrees,
+        money moved outside those three paths.
+        """
+        retired = int(self.lifetime_outflow) - int(self.lifetime_granted) - int(self.lifetime_settled) - int(self.lifetime_dissolved) - int(self.total_keeper_paid)
+        real = int(self.balance)
+        treasury = int(self.treasury)
+        return json.dumps({
+            "real_balance_atto": real,
+            "treasury_atto": treasury,
+            "retired_atto": retired,
+            "holds": real == treasury + retired,
         }, sort_keys=True)
 
     @gl.public.view
@@ -1323,6 +1425,8 @@ Return JSON only, with exactly these keys:
             "delivery_verdict": str(proposal.delivery_verdict),
             "delivery_score": int(proposal.delivery_score),
             "delivery_rationale": str(proposal.delivery_rationale),
+            "evidence_fp": str(proposal.evidence_fp),
+            "review_count": int(proposal.review_count),
             "body": str(proposal.body),
         }, sort_keys=True)
 
@@ -1569,6 +1673,20 @@ Return JSON only, with exactly these keys:
             self._log({"event": "dissolution_authorised", "id": proposal_id, "recipient": str(recipient)})
             return
 
+        if field == GOV_FIELD_BURN:
+            # Destroying spendable funds is constitutional, however routine it
+            # feels: it used to be one operator call away with no bound. The
+            # vote authorises the rate; MAX_BURN_BPS caps what any cycle may
+            # take on top, so no voted value can become a drain either.
+            burn = _parse_int_text(value)
+            if burn < 0:
+                raise gl.vm.UserError(f"{ERROR_EXPECTED} burn per cycle cannot be negative")
+            self.burn_per_cycle = u256(burn)
+            self.proposals[proposal_id].executed = True
+            self.executed_count = u256(int(self.executed_count) + 1)
+            self._log({"event": "burn_changed", "id": proposal_id, "burn_per_cycle": str(burn)})
+            return
+
         raise gl.vm.UserError(f"{ERROR_EXPECTED} unknown governance field {field}")
 
     def _log(self, entry: dict) -> None:
@@ -1631,7 +1749,7 @@ Return JSON only, with exactly these keys:
         """
         # Validated before any value moves, so an unbucketed payout cannot debit
         # the treasury and then fail its way out of the identity.
-        if bucket not in (BUCKET_GRANT, BUCKET_SETTLE, BUCKET_DISSOLUTION):
+        if bucket not in (BUCKET_GRANT, BUCKET_SETTLE, BUCKET_DISSOLUTION, BUCKET_KEEPER):
             raise gl.vm.UserError(f"{ERROR_EXPECTED} payout {memo} has no conservation bucket")
         address = _to_address(recipient)
         self.treasury = u256(int(self.treasury) - amount)
@@ -1640,8 +1758,13 @@ Return JSON only, with exactly these keys:
             self.lifetime_granted = u256(int(self.lifetime_granted) + amount)
         elif bucket == BUCKET_SETTLE:
             self.lifetime_settled = u256(int(self.lifetime_settled) + amount)
+        elif bucket == BUCKET_KEEPER:
+            self.total_keeper_paid = u256(int(self.total_keeper_paid) + amount)
         else:
             self.lifetime_dissolved = u256(int(self.lifetime_dissolved) + amount)
+        # Recorded before the transfer leaves: if it comes back through
+        # __on_errored_message__, this is what says which bucket to reverse.
+        self.pending_payout = bucket + ":" + str(int(amount))
         _ChainAccount(address).emit_transfer(value=u256(amount))
         self._log({
             "event": "payout",
@@ -1650,6 +1773,42 @@ Return JSON only, with exactly these keys:
             "memo": memo,
             "bucket": bucket,
         })
+
+    @gl.public.write.payable
+    def __on_errored_message__(self):
+        """
+        A transfer the estate sent has come back.
+
+        Value moves out through internal messages, and a message that fails
+        returns its value here rather than vanishing. Without this, a failed
+        payout would leave the treasury debited for money that is physically
+        back: the bookkeeping would say sent, the balance would say held.
+        So the refund rejoins the treasury and unwinds the outflow it caused;
+        the bucket unwinds too when the pending record matches, and anything
+        else is logged loudly rather than guessed.
+        """
+        value = int(gl.message.value)
+        if value <= 0:
+            self._log({"event": "empty_refund_ignored"})
+            return
+        self.treasury = u256(int(self.treasury) + value)
+        self.lifetime_outflow = u256(max(0, int(self.lifetime_outflow) - value))
+        pending = str(self.pending_payout)
+        reversed_bucket = ""
+        if ":" in pending:
+            bucket, _, count = pending.rpartition(":")
+            if bucket in (BUCKET_GRANT, BUCKET_SETTLE, BUCKET_DISSOLUTION, BUCKET_KEEPER) and count.strip() == str(value):
+                if bucket == BUCKET_GRANT:
+                    self.lifetime_granted = u256(max(0, int(self.lifetime_granted) - value))
+                elif bucket == BUCKET_SETTLE:
+                    self.lifetime_settled = u256(max(0, int(self.lifetime_settled) - value))
+                elif bucket == BUCKET_KEEPER:
+                    self.total_keeper_paid = u256(max(0, int(self.total_keeper_paid) - value))
+                else:
+                    self.lifetime_dissolved = u256(max(0, int(self.lifetime_dissolved) - value))
+                reversed_bucket = bucket
+        self.pending_payout = ""
+        self._log({"event": "payout_refunded", "amount_atto": str(value), "bucket": reversed_bucket})
 
     def _proposal_dashboard(self) -> str:
         rows = []
@@ -1682,6 +1841,8 @@ Return JSON only, with exactly these keys:
             "delivery_verdict": str(proposal.delivery_verdict),
             "delivery_score": int(proposal.delivery_score),
             "delivery_payout": int(proposal.delivery_payout),
+            "evidence_fp": str(proposal.evidence_fp),
+            "review_count": int(proposal.review_count),
             "settled": bool(proposal.settled),
             "violations": violations,
             # Bounded on purpose: this feeds the advance_cycle prompt, and a
@@ -1895,7 +2056,20 @@ Return JSON only, with exactly these keys:
         elif requested == ACTION_WIND_DOWN:
             wind_down_requested = True
 
+        # Burn is retirement, not destruction: no primitive in the documented
+        # GenVM surface destroys native GEN, so burned value stays physically
+        # in the contract account and leaves the spendable treasury forever.
+        # real balance == treasury + retired always, which
+        # get_treasury_reconciliation shows on demand. Like the keeper reward,
+        # each cycle may retire at most MAX_BURN_BPS of the treasury, so the
+        # voted rate in burn_per_cycle can never become a one-call drain.
         burn = int(self.burn_per_cycle)
+        burn_cap = (int(self.treasury) * MAX_BURN_BPS) // 10000
+        if burn_cap <= 0:
+            if burn > int(self.treasury):
+                burn = int(self.treasury)
+        elif burn > burn_cap:
+            burn = burn_cap
         if burn > int(self.treasury):
             burn = int(self.treasury)
         # The keeper setting is operator-tunable, but each cycle may pay at
@@ -1921,9 +2095,7 @@ Return JSON only, with exactly these keys:
             self.treasury = u256(int(self.treasury) - burn)
             self.lifetime_outflow = u256(int(self.lifetime_outflow) + burn)
         if reward > 0:
-            _ChainAccount(keeper).emit_transfer(value=u256(reward))
-            self.treasury = u256(int(self.treasury) - reward)
-            self.total_keeper_paid = u256(int(self.total_keeper_paid) + reward)
+            self._pay(str(keeper), reward, "keeper:cycle:" + str(int(self.cycle)), BUCKET_KEEPER)
             self.keeper_count = u256(int(self.keeper_count) + 1)
 
         self.cycle = u256(int(self.cycle) + 1)
@@ -2056,6 +2228,8 @@ Return JSON only, with exactly these keys:
             delivery_score=u256(0),
             delivery_payout=u256(0),
             delivery_rationale="",
+            evidence_fp="",
+            review_count=u256(0),
             settled=False,
         )
         self.proposal_violations[proposal_id] = []

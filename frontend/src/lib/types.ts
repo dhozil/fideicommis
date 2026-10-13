@@ -75,6 +75,8 @@ export interface Proposal {
   delivery_verdict: DeliveryVerdict | string;
   delivery_score: number;
   delivery_payout: string;
+  /** sha256 of the exact evidence text judged, so a changed page cannot borrow it. */
+  evidence_fp: string;
   settled: boolean;
   violations: string[];
   body_len: number;

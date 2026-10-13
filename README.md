@@ -95,7 +95,7 @@ ceiling cannot exceed 50%. A vote may tighten the trust; it can never loosen it 
 They are not parameters of any method, so there is nothing to pass.
 
 **3. A constitutional change waits.** Quorum, the ceiling, membership, the rulebook, the
-evidence sources, dissolution and the charter move only through a `GOVERNANCE` proposal, and only after a
+evidence sources, the burn rate, dissolution and the charter move only through a `GOVERNANCE` proposal, and only after a
 member vote plus a delay of one hour. The clock is stamped when quorum is *reached*, not when
 the proposal is submitted, so a trust cannot shorten its own delay by re-voting. Winding down
 without an executed `DISSOLVE` proposal is refused, by the operator's own call and by the
@@ -179,9 +179,24 @@ executes on quorum alone.
 
 `_pay` takes the bucket it draws from and refuses an unrecognised one before any value moves.
 The lifetime flow is the sum of six buckets plus what is still held, and the reader prints the
-residue if they disagree rather than hiding it. The keeper is paid outside `_pay` but inside
-the identity, and at most one percent of the treasury per cycle: `set_policy` stays
-operator-tunable, but no setting turns a permissionless `advance_cycle` into a drain.
+residue if they disagree rather than hiding it. Every payout including the keeper's
+travels through `_pay`, and at most one percent of the treasury per cycle may go to the
+keeper: `set_policy` stays operator-tunable, but no setting turns a permissionless
+`advance_cycle` into a drain.
+
+Burn is retirement, not destruction: no documented GenVM primitive destroys native GEN,
+so burned value stays physically in the contract account and leaves the spendable
+treasury forever. `get_treasury_reconciliation` shows real balance against treasury
+plus retired on demand, and a transfer that comes back through `__on_errored_message__`
+rejoins the treasury with its bucket reversed instead of drifting from the books.
+
+### Delivery evidence
+
+Review judges exactly the URL the grant committed to — string equality, not a
+substring — and records the sha256 of the judged text with the verdict, so a page
+that changes afterwards cannot borrow an earlier acceptance. An inconclusive
+review may be retried up to three times; acceptance and rejection are final on
+the first verdict.
 
 ### VM safety
 
@@ -189,13 +204,13 @@ No float division appears anywhere in the contract; a float in consensus-execute
 crashes the VM rather than returning a wrong number. GenLayer's storage layout is positional,
 so a field inserted mid-list silently reinterprets every field after it. The layout is
 therefore frozen and append-only, and `tests/test_fideicommis.py` pins all
-**46 names and types** in order, so an insertion fails the suite rather than passing it.
+**47 names and types** in order, so an insertion fails the suite rather than passing it.
 
 ---
 
 ## The contract
 
-One file, one class, **40 methods** (25 view, 15 write), **46 storage fields**.
+One file, one class, **42 methods** (26 view, 16 write), **47 storage fields**.
 
 ```
 contracts/fideicommis.py
@@ -230,7 +245,7 @@ with no answer at all.
 
 ```
 contracts/fideicommis.py     the trust. one contract, one file, 40 methods
-tests/                       direct mode: 127 test functions, no network, no model calls
+tests/                       direct mode: 135 test functions, no network, no model calls
 tests/integration/           consensus against real GenVM on Studionet
 frontend/                    the reader
 scripts/                     Studionet drivers, all sharing scripts/studionet.cjs

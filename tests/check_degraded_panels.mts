@@ -133,5 +133,23 @@ console.log("=== the page already told the reader, and the panels now agree with
 }
 
 console.log();
+console.log("=== the conservation cross-check compares the right two numbers ===");
+{
+  // conserved_atto is the contract's conserved total: it equals the inflow when the
+  // ledger adds up. An earlier version compared it with the residue — which is zero
+  // on a balanced trust — so every balanced trust showed "does not add up" while its
+  // attoGEN figures balanced exactly. That is the warning a steward reported.
+  const ledger = readFileSync(
+    join(here, "..", "frontend", "src", "components", "Conservation.tsx"),
+    "utf-8",
+  );
+  check(
+    "conserved_atto is compared with the inflow",
+    /atto\(contractConserved\) === inflow/.test(ledger),
+  );
+  check("never with the residue", !/atto\(contract\w*\) === residue/.test(ledger));
+}
+
+console.log();
 console.log(failed ? `${failed} check(s) failed` : "an unreadable view shows as unreadable, not as a crash");
 if (failed) process.exit(1);

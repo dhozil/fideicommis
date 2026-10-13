@@ -77,7 +77,7 @@ const flow = () => read("get_lifetime_flow").then(JSON.parse);
   const before = await flow();
   const treasury = BigInt(before.treasury_atto);
   console.log(`  treasury before: ${fmt(treasury)}`);
-  const set = await writeTo(TRUST, "set_policy", [0, treasury, 60]);
+  const set = await writeTo(TRUST, "set_policy", [treasury, 60]);
   console.log(`  [3] set keeper reward to 100% of treasury: ${set.ok ? "tx " + set.hash : "REFUSED " + set.reason}`);
   const adv = await writeTo(TRUST, "advance_cycle", []);
   console.log(`      advance_cycle: ${adv.ok ? "tx " + adv.hash : "REFUSED " + String(adv.reason).slice(0, 80)}`);
@@ -85,7 +85,7 @@ const flow = () => read("get_lifetime_flow").then(JSON.parse);
   const paid = BigInt(after.keeper_paid_atto) - BigInt(before.keeper_paid_atto);
   const want = (treasury * 100n) / 10000n;
   console.log(`      keeper paid this cycle: ${fmt(paid)} (cap 1% = ${fmt(want)}) ${paid === want ? "CAPPED" : "MISMATCH"}`);
-  const restore = await writeTo(TRUST, "set_policy", [0, 0, 60]);
+  const restore = await writeTo(TRUST, "set_policy", [0, 60]);
   console.log(`      policy restored to zeros: ${restore.ok ? "yes" : "REFUSED " + restore.reason}`);
 
   const f = await flow();

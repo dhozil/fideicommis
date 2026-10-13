@@ -143,7 +143,7 @@ async function policy() {
   const p = JSON.parse(await read("get_policy"));
   if (p.tick_interval === TICK) return;
     console.log("\n[4] set_policy so the cooldown is 60s (the ceiling and quorum are constitutional now)");
-  const r = await write("set_policy", [0n, 0n, TICK]);
+    const r = await write("set_policy", [0n, TICK]);
   if (!r.ok) return console.log(`  FAILED at ${r.phase}: ${r.reason}`);
   console.log(`  ${r.hash}`);
   console.log(`  ${await read("get_policy")}`);

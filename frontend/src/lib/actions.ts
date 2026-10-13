@@ -185,7 +185,11 @@ export const fund = (trust: string, amount: bigint, from?: string, onStage?: (st
   submit(trust, "fund", [], { value: amount, from, onStage });
 
 /**
- * Operational policy: what burns, what a keeper is paid, how often.
+ * Operational policy: what a keeper is paid, and how often the cycle may run.
+ *
+ * The burn rate is deliberately NOT a parameter: it moves only through a
+ * BURN_PER_CYCLE governance proposal, so no operator call can destroy
+ * spendable funds. See RulesActions, which says so next to the control.
  *
  * Every helper takes `onStage` because every write has the same two waits, and a
  * button that cannot say which one it is in is a button that looks stuck. Four of
@@ -194,12 +198,11 @@ export const fund = (trust: string, amount: bigint, from?: string, onStage?: (st
  */
 export const setPolicy = (
   trust: string,
-  burn: bigint,
   keeper: bigint,
   tick: number,
   from?: string,
   onStage?: (stage: WriteStage) => void,
-) => submit(trust, "set_policy", [burn, keeper, tick], { from, onStage });
+) => submit(trust, "set_policy", [keeper, tick], { from, onStage });
 
 /** A member proposes. Anyone may propose; only a member may vote. */
 export const submitProposal = (

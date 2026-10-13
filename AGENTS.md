@@ -27,7 +27,7 @@ touches one needs a test that fails without it.
 
 1. **Storage fields are appended, never inserted.** GenLayer's layout is
    positional. A field inserted mid-list silently reinterprets every field after
-   it. `test_storage_layout_is_frozen_append_only` pins all 46 names and types in
+   it. `test_storage_layout_is_frozen_append_only` pins all 47 names and types in
    order, and the class carries an `APPEND` comment marking the boundary. Both
    exist because a comment alone is not a test, and this rule went unenforced for
    most of the project's life.
@@ -46,9 +46,10 @@ touches one needs a test that fails without it.
    amendment with no charter text cannot execute. Validators agree on the
    *action*, never on the prose, so prose must not be load-bearing.
 6. **A constitutional change waits.** Quorum, the ceiling, membership, the
-   rulebook, the evidence sources, dissolution and the charter all move only
-   through a `GOVERNANCE` proposal, and only after a member vote plus the
-   timelock. The delay is stamped when quorum is *reached*, not when submitted.
+   rulebook, the evidence sources, the burn rate, dissolution and the charter
+   all move only through a `GOVERNANCE` proposal, and only after a member vote
+   plus the timelock. The delay is stamped when quorum is *reached*, not when
+   submitted.
 7. **The hard limits are constants.** `MIN_QUORUM_BPS`,
    `MAX_SPEND_CEILING_BPS` and `MAX_KEEPER_BPS` are not policy. A vote can tighten
    the trust and never loosen it past them.
@@ -56,7 +57,7 @@ touches one needs a test that fails without it.
    decision names the proposal the validator checked; the rulebook is agreed
    rule by rule against the charter; delivery scores pay by the bucket. The two tranches of
    a grant total its amount, tracked per proposal, and delivery review is a
-   member act on the URL the grant committed to.
+   member act on the exact URL the grant committed to, fingerprinted at judgment.
 
 ## Reading the chain
 

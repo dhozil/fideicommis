@@ -30,7 +30,7 @@ const ENFORCED = [
 const NOT_ENFORCED = [
   {
     claim: "Each live trust has one member.",
-    honest: "One member holding every share, so one approval satisfies quorum. The contract removes the operator's ability to manufacture that arrangement unilaterally. It cannot create pluralism.",
+    honest: "One member holding every share, so one approval satisfies quorum. Validator assessment and organisational governance are different things: the committee independently validates each decision against the charter, but the governing vote is cast by one person. The contract removes the operator's ability to manufacture that arrangement unilaterally. It cannot create pluralism.",
   },
   {
     claim: "Nothing here has been independently reviewed.",

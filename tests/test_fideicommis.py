@@ -229,7 +229,7 @@ def test_fund_requires_value(warp, direct_vm, direct_deploy, direct_owner):
 
 def test_runway_tracks_burn_rate(warp, direct_vm, direct_deploy, direct_owner):
     org = build(direct_vm, direct_deploy, direct_owner, treasury=10 * GEN)
-    org.set_policy(2 * GEN, GEN // 10, 3600)
+    set_burn(org, direct_vm, 2 * GEN)
     assert org.get_runway_cycles() == 5
     policy = json.loads(org.get_policy())
     assert policy["burn_per_cycle"] == 2 * GEN
@@ -244,14 +244,16 @@ def test_runway_is_zero_without_burn(warp, direct_vm, direct_deploy, direct_owne
 def test_policy_rejects_bad_bounds(warp, direct_vm, direct_deploy, direct_owner):
     org = build(direct_vm, direct_deploy, direct_owner, treasury=10 * GEN)
     with direct_vm.expect_revert("tick_interval must be at least 60"):
-        org.set_policy(0, 0, 30)
+        org.set_policy(0, 30)
+    with direct_vm.expect_revert("keeper reward cannot be negative"):
+        org.set_policy(-1, 60)
 
 
 def test_only_operator_may_set_policy(warp, direct_vm, direct_deploy, direct_owner, direct_bob):
     org = build(direct_vm, direct_deploy, direct_owner)
     with direct_vm.prank(hx(direct_bob)):
         with direct_vm.expect_revert("sender is not the operator or founder"):
-            org.set_policy(0, 0, 3600)
+            org.set_policy(0, 3600)
 
 
 def test_policy_no_longer_takes_quorum_or_ceiling(warp, direct_vm, direct_deploy, direct_owner):
@@ -260,10 +262,24 @@ def test_policy_no_longer_takes_quorum_or_ceiling(warp, direct_vm, direct_deploy
     parameters. A call with the old five arguments must not silently succeed.
     """
     org = build(direct_vm, direct_deploy, direct_owner)
-    with direct_vm.expect_revert("takes 4 positional arguments"):
-        org.set_policy(0, 0, 3600, 1, 10000)
+    with direct_vm.expect_revert("takes 3 positional arguments"):
+        org.set_policy(0, 3600, 1, 10000)
     assert json.loads(org.get_constitutional_state())["quorum_bps"] == 5000
     assert json.loads(org.get_constitutional_state())["spend_ceiling_bps"] == 2000
+
+
+def test_burn_is_not_an_operator_power(warp, direct_vm, direct_deploy, direct_owner):
+    """
+    Destroying spendable funds in one call with no vote was the burn hole: an
+    operator set any rate through set_policy and the next cycle took it. The
+    rate moves only through a BURN_PER_CYCLE governance proposal now, and a
+    three-argument call to set_policy must not silently succeed.
+    """
+    org = build(direct_vm, direct_deploy, direct_owner, treasury=10 * GEN)
+    with direct_vm.expect_revert("takes 3 positional arguments"):
+        org.set_policy(GEN, 0, 60)
+    set_burn(org, direct_vm, GEN)
+    assert json.loads(org.get_policy())["burn_per_cycle"] == GEN
 
 
 def test_the_original_capture_sequence_is_now_impossible(warp, direct_vm, direct_deploy, direct_owner, direct_bob):
@@ -282,8 +298,8 @@ def test_the_original_capture_sequence_is_now_impossible(warp, direct_vm, direct
     ce = json.loads(org.get_constitutional_state())
 
     # 1. the ceiling and quorum are not parameters of set_policy at all
-    with direct_vm.expect_revert("takes 4 positional arguments"):
-        org.set_policy(0, 0, 3600, 1, 10000)
+    with direct_vm.expect_revert("takes 3 positional arguments"):
+        org.set_policy(0, 3600, 1, 10000)
 
     # 2. membership is not an operator power
     with direct_vm.expect_revert("membership is constitutional"):
@@ -296,6 +312,10 @@ def test_the_original_capture_sequence_is_now_impossible(warp, direct_vm, direct
     # 4. neither is the evidence the committee reads
     with direct_vm.expect_revert("evidence sources are constitutional"):
         org.set_evidence_urls("https://example.org/anything")
+
+    # 5. nor is the burn rate: destroying spendable funds takes a vote now
+    with direct_vm.expect_revert("takes 3 positional arguments"):
+        org.set_policy(GEN, 0, 60)
 
     # and after all four refusals the constitution is exactly as it started
     assert json.loads(org.get_constitutional_state())["quorum_bps"] == ce["quorum_bps"]
@@ -1103,7 +1123,7 @@ def test_unverifiable_leader_result_makes_validators_disagree(warp, direct_vm, d
 
 def _armed_org(direct_vm, direct_deploy, direct_owner, treasury=10 * GEN):
     org = build(direct_vm, direct_deploy, direct_owner, treasury=treasury)
-    org.set_policy(0, 0, 60)
+    org.set_policy(0, 60)
     bootstrap(org, direct_vm)
     return org
 
@@ -1139,14 +1159,14 @@ def test_shortening_the_cooldown_never_pulls_the_deadline_back(warp, direct_vm, 
     future "convenience" change from quietly removing the rate limit.
     """
     org = build(direct_vm, direct_deploy, direct_owner, treasury=10 * GEN)
-    org.set_policy(0, 0, 3600)
+    org.set_policy(0, 3600)
     mock_exec(direct_vm, "HOLD")
     org.advance_cycle()
     far_future = int(org.get_next_tick_at())
     assert far_future > 0
 
     # Dropping the interval to its minimum must not bring the deadline forward.
-    org.set_policy(0, 0, 60)
+    org.set_policy(0, 60)
     assert int(org.get_next_tick_at()) == far_future
     with direct_vm.expect_revert("next tick at"):
         mock_exec(direct_vm, "HOLD")
@@ -1162,20 +1182,23 @@ def test_shortening_the_cooldown_never_pulls_the_deadline_back(warp, direct_vm, 
 
 def test_advance_cycle_burns_and_pays_the_keeper(warp, direct_vm, direct_deploy, direct_owner, direct_bob):
     org = build(direct_vm, direct_deploy, direct_owner, treasury=10 * GEN)
-    org.set_policy(GEN, GEN // 100, 60)
+    set_burn(org, direct_vm, GEN)
+    org.set_policy(GEN // 100, 60)
     mock_exec(direct_vm, "HOLD")
     with direct_vm.prank(hx(direct_bob)):
         org.advance_cycle()
-    assert org.get_treasury() == 10 * GEN - GEN - (GEN // 100)
+    # The voted burn is GEN, but no cycle retires more than one percent.
+    assert org.get_treasury() == 10 * GEN - (10 * GEN // 100) - (GEN // 100)
     summary = json.loads(org.get_org_summary())
     assert summary["keeper_count"] == 1
     assert summary["keeper_paid_atto"] == GEN // 100
     assert json.loads(org.get_lifetime_flow())["keeper_paid_atto"] == GEN // 100
+    assert json.loads(org.get_lifetime_flow())["burned_atto"] == 10 * GEN // 100
 
 
 def test_advance_cycle_funds_an_approved_grant(warp, direct_vm, direct_deploy, direct_owner):
     org = build(direct_vm, direct_deploy, direct_owner, treasury=10 * GEN)
-    org.set_policy(0, 0, 60)
+    org.set_policy(0, 60)
     bootstrap(org, direct_vm)
     proposal_id = compliant_proposal(org, direct_vm, amount=GEN)
     org.cast_vote(proposal_id, True)
@@ -1188,7 +1211,7 @@ def test_advance_cycle_funds_an_approved_grant(warp, direct_vm, direct_deploy, d
 
 def test_advance_cycle_settles_accepted_work(warp, direct_vm, direct_deploy, direct_owner):
     org = build(direct_vm, direct_deploy, direct_owner, treasury=10 * GEN)
-    org.set_policy(0, 0, 60)
+    org.set_policy(0, 60)
     bootstrap(org, direct_vm)
     proposal_id = _funded_proposal(org, direct_vm, amount=GEN)
     direct_vm.mock_web(r"example\.org/delivery", {"status": 200, "body": "published"})
@@ -1204,7 +1227,7 @@ def test_advance_cycle_settles_accepted_work(warp, direct_vm, direct_deploy, dir
 
 def test_advance_cycle_degrades_an_unpayable_action_to_hold(warp, direct_vm, direct_deploy, direct_owner):
     org = build(direct_vm, direct_deploy, direct_owner, treasury=10 * GEN)
-    org.set_policy(0, 0, 60)
+    org.set_policy(0, 60)
     bootstrap(org, direct_vm)
     mock_exec(direct_vm, "FUND", proposal_id="p404", amount=GEN, confidence=80)
     org.advance_cycle()
@@ -1303,7 +1326,7 @@ def test_a_member_authored_amendment_still_works(warp, direct_vm, direct_deploy,
 def test_advance_cycle_wind_down_stops_the_loop(warp, direct_vm, direct_deploy, direct_owner):
     org = build(direct_vm, direct_deploy, direct_owner, treasury=10 * GEN)
     authorize_dissolution(org, direct_vm, hx(direct_owner))
-    org.set_policy(0, 0, 60)
+    org.set_policy(0, 60)
     mock_exec(direct_vm, "WIND_DOWN", confidence=75, rationale="mission no longer achievable")
     org.advance_cycle()
     assert org.get_status() == "WINDING_DOWN"
@@ -1339,11 +1362,34 @@ def test_advance_cycle_validator_rejects_an_out_of_policy_amount(warp, direct_vm
     assert verdict is False
 
 
+def drain_to_dormant(org, vm, limit=400):
+    """
+    Advance HOLD cycles until the capped burn exhausts the treasury.
+
+    The per-cycle burn cap means no single cycle drains anything but dust, so
+    exhaustion takes many ticks. Warps jump far forward every iteration to
+    stay past any timelock warp an earlier governance step already made.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    start = datetime(2031, 3, 1, tzinfo=timezone.utc)
+    for step in range(1, limit + 1):
+        if org.get_status() == "DORMANT":
+            return step
+        vm.warp((start + timedelta(hours=1000 + step)).isoformat())
+        mock_exec(vm, "HOLD")
+        org.advance_cycle()
+    raise AssertionError("treasury never exhausted")
+
+
 def test_exhausted_treasury_dormants_and_funding_revives(warp, direct_vm, direct_deploy, direct_owner):
-    org = build(direct_vm, direct_deploy, direct_owner, treasury=2 * GEN)
-    org.set_policy(2 * GEN, 0, 60)
+    org = build(direct_vm, direct_deploy, direct_owner, treasury=200)
+    set_burn(org, direct_vm, 2 * GEN)
     mock_exec(direct_vm, "HOLD")
     org.advance_cycle()
+    assert org.get_treasury() < 200
+    assert org.get_status() == "ACTIVE"
+    drain_to_dormant(org, direct_vm)
     assert org.get_treasury() == 0
     assert org.get_status() == "DORMANT"
     with direct_vm.expect_revert("not ACTIVE"):
@@ -1386,26 +1432,6 @@ def test_dissolved_org_refuses_new_proposals(warp, direct_vm, direct_deploy, dir
         org.submit_proposal("t", "b", "GRANT", GEN, "0x" + "11" * 20)
 
 
-def test_funding_revives_a_dormant_org(warp, direct_vm, direct_deploy, direct_owner):
-    org = build(direct_vm, direct_deploy, direct_owner, treasury=2 * GEN)
-    org.set_policy(2 * GEN, 0, 60)
-    mock_exec(direct_vm, "HOLD")
-    org.advance_cycle()
-    assert org.get_status() == "DORMANT"
-    with direct_vm.expect_revert("not ACTIVE"):
-        mock_exec(direct_vm, "HOLD")
-        org.advance_cycle()
-    direct_vm.value = 5 * GEN
-    org.fund()
-    direct_vm.value = 0
-    assert org.get_status() == "ACTIVE"
-    assert org.get_runway_cycles() == 2
-    direct_vm.warp("2031-03-01T00:05:00+00:00")
-    mock_exec(direct_vm, "HOLD")
-    org.advance_cycle()
-    assert org.get_cycle() == 2
-
-
 def test_evidence_sources_are_not_an_operator_power(warp, direct_vm, direct_deploy, direct_owner):
     """
     Step four of a capture: choose which sources the committee can see, then have
@@ -1418,10 +1444,9 @@ def test_evidence_sources_are_not_an_operator_power(warp, direct_vm, direct_depl
 
 
 def test_funding_revives_a_dormant_org(warp, direct_vm, direct_deploy, direct_owner):
-    org = build(direct_vm, direct_deploy, direct_owner, treasury=2 * GEN)
-    org.set_policy(2 * GEN, 0, 60)
-    mock_exec(direct_vm, "HOLD")
-    org.advance_cycle()
+    org = build(direct_vm, direct_deploy, direct_owner, treasury=200)
+    set_burn(org, direct_vm, 2 * GEN)
+    drain_to_dormant(org, direct_vm)
     assert org.get_status() == "DORMANT"
     with direct_vm.expect_revert("not ACTIVE"):
         mock_exec(direct_vm, "HOLD")
@@ -1431,11 +1456,11 @@ def test_funding_revives_a_dormant_org(warp, direct_vm, direct_deploy, direct_ow
     direct_vm.value = 0
     assert org.get_status() == "ACTIVE"
     assert org.get_runway_cycles() == 2
-    direct_vm.warp("2031-03-01T00:05:00+00:00")
+    direct_vm.warp("2032-06-01T00:00:00+00:00")
     mock_exec(direct_vm, "HOLD")
     org.advance_cycle()
-    assert org.get_cycle() == 2
-    assert "revived" in org.get_mission_log(0, 50)
+    assert org.get_cycle() > 1
+    assert "revived" in org.get_mission_log(0, 500)
 
 
 def test_exhausted_treasury_sleeps_even_if_the_model_wants_to_wind_down(warp, direct_vm, direct_deploy, direct_owner):
@@ -1445,23 +1470,26 @@ def test_exhausted_treasury_sleeps_even_if_the_model_wants_to_wind_down(warp, di
     treasury, which left the fideicommis WINDING_DOWN with no way back. The
     exhaustion rule now takes precedence, so funding always revives it.
     """
-    org = build(direct_vm, direct_deploy, direct_owner, treasury=GEN)
-    org.set_policy(GEN, 0, 60)
+    org = build(direct_vm, direct_deploy, direct_owner, treasury=200)
+    set_burn(org, direct_vm, GEN)
     mock_exec(direct_vm, "WIND_DOWN", confidence=75, rationale="mission no longer achievable")
     org.advance_cycle()
+    assert org.get_last_action() == "HOLD"
+    assert org.get_status() == "ACTIVE"
+    drain_to_dormant(org, direct_vm)
     assert org.get_treasury() == 0
     assert org.get_status() == "DORMANT"
     direct_vm.value = GEN
     org.fund()
     direct_vm.value = 0
     assert org.get_status() == "ACTIVE"
-    assert org.get_cycle() == 1
+    assert org.get_cycle() > 1
 
 
 def test_wind_down_still_works_while_there_is_a_remainder(warp, direct_vm, direct_deploy, direct_owner):
     org = build(direct_vm, direct_deploy, direct_owner, treasury=10 * GEN)
     authorize_dissolution(org, direct_vm, hx(direct_owner))
-    org.set_policy(0, 0, 60)
+    org.set_policy(0, 60)
     mock_exec(direct_vm, "WIND_DOWN", confidence=75, rationale="the charter can no longer be met")
     org.advance_cycle()
     assert org.get_status() == "WINDING_DOWN"
@@ -1488,11 +1516,12 @@ def assert_conserved(org, note=""):
     )
     assert buckets + f["treasury_atto"] == f["inflow_atto"], f"funds not conserved {note}: {f}"
     assert f["conserved_atto"] == f["inflow_atto"], f"conserved_atto disagrees with inflow {note}: {f}"
-    # lifetime_outflow counts everything that left the treasury as burn or payout.
-    # Keeper rewards are reported separately and are part of the same total.
+    # lifetime_outflow counts everything that left the treasury as a payout or
+    # a burn. Keeper rewards travel through _pay like any other payout, so they
+    # are part of the same total.
     assert (
         f["outflow_atto"]
-        == f["granted_atto"] + f["settled_atto"] + f["dissolved_atto"] + f["burned_atto"]
+        == f["granted_atto"] + f["settled_atto"] + f["dissolved_atto"] + f["burned_atto"] + f["keeper_paid_atto"]
     ), f"outflow does not equal the payout buckets plus burn {note}: {f}"
     return f
 
@@ -1536,7 +1565,8 @@ def test_funds_are_conserved_through_settlement(warp, direct_vm, direct_deploy, 
 
 def test_funds_are_conserved_through_burn_and_keeper_reward(warp, direct_vm, direct_deploy, direct_owner):
     org = _armed_org(direct_vm, direct_deploy, direct_owner, treasury=10 * GEN)
-    org.set_policy(GEN, GEN // 100, 60)
+    set_burn(org, direct_vm, GEN // 100)
+    org.set_policy(GEN // 100, 60)
     for minute in (10, 12, 14, 16):
         # The cooldown is 60s, so the clock has to clear it before the next
         # advance_cycle is accepted.
@@ -1545,10 +1575,10 @@ def test_funds_are_conserved_through_burn_and_keeper_reward(warp, direct_vm, dir
         org.advance_cycle()
 
     f = assert_conserved(org, "after four cycles")
-    assert f["burned_atto"] == 4 * GEN
+    assert f["burned_atto"] == 4 * (GEN // 100)
     assert f["keeper_paid_atto"] == 4 * (GEN // 100)
     assert f["granted_atto"] == 0
-    assert f["treasury_atto"] == 10 * GEN - 4 * GEN - 4 * (GEN // 100)
+    assert f["treasury_atto"] == 10 * GEN - 4 * (GEN // 100) - 4 * (GEN // 100)
     assert f["inflow_atto"] == 10 * GEN
 
 
@@ -1605,7 +1635,7 @@ def test_mission_log_is_appended_and_queryable(warp, direct_vm, direct_deploy, d
     entries = json.loads(org.get_mission_log(0, 100))
     assert len(entries) == 1
     assert "genesis" in entries[0]
-    org.set_policy(0, 0, 60)
+    org.set_policy(0, 60)
     entries = json.loads(org.get_mission_log(0, 100))
     assert "policy" in entries[-1]
     assert json.loads(org.get_mission_log(100, 100)) == []
@@ -1627,7 +1657,7 @@ def test_org_summary_reports_lifecycle(warp, direct_vm, direct_deploy, direct_ow
 def test_snapshot_restores_full_state(warp, direct_vm, direct_deploy, direct_owner):
     org = build(direct_vm, direct_deploy, direct_owner, treasury=10 * GEN)
     snapshot = direct_vm.snapshot()
-    org.set_policy(GEN, 0, 60)
+    org.set_policy(0, 60)
     org.submit_proposal("t", "b", "GRANT", GEN, "0x" + "11" * 20)
     assert org.get_proposal_count() == 1
     direct_vm.revert(snapshot)
@@ -1779,6 +1809,7 @@ _STORAGE_LAYOUT = [
     ("op_ready_at", "TreeMap[str, u64]"),
     ("dissolution_recipient", "str"),
     ("proposal_paid", "TreeMap[str, u256]"),
+    ("pending_payout", "str"),
 ]
 
 # The field the contract's own comment calls out as the start of the appended
@@ -1870,6 +1901,16 @@ def authorize_dissolution(org, vm, recipient):
     return proposal_id
 
 
+def set_burn(org, vm, amount):
+    """The burn rate is constitutional: a member vote plus the timelock."""
+    if json.loads(org.get_charter_rules()) == []:
+        bootstrap(org, vm)
+    proposal_id = governance(org, vm, "BURN_PER_CYCLE:" + str(amount), title="Set burn rate")
+    cross_timelock(vm, org)
+    org.execute_proposal(proposal_id)
+    return proposal_id
+
+
 def test_dissolve_needs_member_authorisation(warp, direct_vm, direct_deploy, direct_owner, direct_bob):
     org = build(direct_vm, direct_deploy, direct_owner, treasury=3 * GEN)
     with direct_vm.expect_revert("never authorised"):
@@ -1904,7 +1945,7 @@ def test_autonomous_wind_down_without_authorisation_holds(warp, direct_vm, direc
 
 def test_keeper_reward_capped_per_cycle(warp, direct_vm, direct_deploy, direct_owner, direct_bob):
     org = build(direct_vm, direct_deploy, direct_owner, treasury=10 * GEN)
-    org.set_policy(0, 10 * GEN, 60)
+    org.set_policy(10 * GEN, 60)
     mock_exec(direct_vm, "HOLD")
     with direct_vm.prank(hx(direct_bob)):
         org.advance_cycle()
@@ -1958,6 +1999,139 @@ def test_review_score_buckets_must_match_exactly(warp, direct_vm, direct_deploy,
     direct_vm.mock_web(r"example\.org/delivery", {"status": 200, "body": "Release 1.0 published."})
     mock_review(direct_vm, "ACCEPTED", 85)
     assert direct_vm.run_validator() is False
+
+
+# ---------------------------------------------------------------- steward round three
+#
+# Burn must be governed and capped, with retirement (not destruction) semantics
+# reconciled against the real balance; delivery evidence must be exactly
+# committed, fingerprinted, and retryable when inconclusive; and a failed
+# transfer must rejoin the books instead of drifting from them.
+
+
+def test_burn_capped_per_cycle(warp, direct_vm, direct_deploy, direct_owner):
+    org = build(direct_vm, direct_deploy, direct_owner, treasury=10 * GEN)
+    set_burn(org, direct_vm, 10 * GEN)
+    org.set_policy(0, 60)
+    mock_exec(direct_vm, "HOLD")
+    org.advance_cycle()
+    assert json.loads(org.get_lifetime_flow())["burned_atto"] == 10 * GEN // 100
+    assert org.get_treasury() == 10 * GEN - (10 * GEN // 100)
+
+
+def test_reconciliation_view_shape(warp, direct_vm, direct_deploy, direct_owner):
+    org = build(direct_vm, direct_deploy, direct_owner, treasury=0)
+    rec = json.loads(org.get_treasury_reconciliation())
+    assert rec["real_balance_atto"] == 0
+    assert rec["treasury_atto"] == 0
+    assert rec["retired_atto"] == 0
+    assert rec["holds"] is True
+    # Direct mode never moves real balances, so a funded trust reads real 0
+    # against a nonzero treasury here. That is a harness artifact, not contract
+    # arithmetic: the live network proves holds on real money.
+
+
+def test_failed_transfer_rejoins_the_books(warp, direct_vm, direct_deploy, direct_owner):
+    org = build(direct_vm, direct_deploy, direct_owner, treasury=10 * GEN)
+    bootstrap(org, direct_vm)
+    proposal_id = compliant_proposal(org, direct_vm, amount=GEN)
+    org.cast_vote(proposal_id, True)
+    org.execute_proposal(proposal_id)
+    assert org.get_treasury() == 10 * GEN - GEN // 2
+    direct_vm.value = GEN // 2
+    org.__on_errored_message__()
+    direct_vm.value = 0
+    assert org.get_treasury() == 10 * GEN
+    lifetime = json.loads(org.get_lifetime_flow())
+    assert lifetime["granted_atto"] == 0
+    assert_conserved(org, "after the refund")
+    log = [json.loads(entry) for entry in json.loads(org.get_mission_log(0, 200))]
+    refunded = [entry for entry in log if entry.get("event") == "payout_refunded"]
+    assert len(refunded) == 1
+    assert refunded[0]["bucket"] == "grant"
+    assert refunded[0]["amount_atto"] == str(GEN // 2)
+
+
+def test_review_rejects_a_url_prefix(warp, direct_vm, direct_deploy, direct_owner):
+    org = build(direct_vm, direct_deploy, direct_owner, treasury=10 * GEN)
+    bootstrap(org, direct_vm)
+    proposal_id = org.submit_proposal(
+        "Keep the named page reachable",
+        "Keep this public web page reachable: https://example.org/real-page and nothing else.",
+        "GRANT",
+        GEN,
+        "0x" + "11" * 20,
+    )
+    mock_assess(direct_vm, ASSESS_COMPLIANT)
+    org.assess_proposal(proposal_id)
+    org.cast_vote(proposal_id, True)
+    org.execute_proposal(proposal_id)
+    direct_vm.mock_web(r"example\.org/real$", {"status": 200, "body": "a shorter page"})
+    mock_review(direct_vm, "ACCEPTED", 80)
+    with direct_vm.expect_revert("must be the exact url named in the proposal"):
+        org.review_delivery(proposal_id, "https://example.org/real")
+
+
+def test_review_records_the_evidence_fingerprint(warp, direct_vm, direct_deploy, direct_owner):
+    import hashlib
+
+    org = build(direct_vm, direct_deploy, direct_owner, treasury=10 * GEN)
+    bootstrap(org, direct_vm)
+    proposal_id = _funded_proposal(org, direct_vm, amount=GEN)
+    body = "Release 1.0 published with dataset."
+    direct_vm.mock_web(r"example\.org/delivery", {"status": 200, "body": body})
+    mock_review(direct_vm, "ACCEPTED", 80, "dataset and docs published")
+    org.review_delivery(proposal_id, "https://example.org/delivery")
+    want = hashlib.sha256(body.encode("utf-8")).hexdigest()
+    assert json.loads(org.get_proposal(proposal_id))["evidence_fp"] == want
+    assert json.loads(org.get_proposal_audit(proposal_id))["evidence_fp"] == want
+
+
+def test_undetermined_review_may_be_retried_bounded(warp, direct_vm, direct_deploy, direct_owner):
+    org = build(direct_vm, direct_deploy, direct_owner, treasury=10 * GEN)
+    bootstrap(org, direct_vm)
+    proposal_id = _funded_proposal(org, direct_vm, amount=GEN)
+    direct_vm.mock_web(r"example\.org/delivery", {"status": 200, "body": "inconclusive"})
+    mock_review(direct_vm, "UNDETERMINED", 0, "cannot tell yet")
+    org.review_delivery(proposal_id, "https://example.org/delivery")
+    assert json.loads(org.get_proposal(proposal_id))["delivery_verdict"] == "UNDETERMINED"
+    mock_review(direct_vm, "UNDETERMINED", 0, "still cannot tell")
+    org.review_delivery(proposal_id, "https://example.org/delivery")
+    mock_review(direct_vm, "UNDETERMINED", 0, "still cannot tell")
+    org.review_delivery(proposal_id, "https://example.org/delivery")
+    assert json.loads(org.get_proposal(proposal_id))["review_count"] == 3
+    mock_review(direct_vm, "UNDETERMINED", 0, "still cannot tell")
+    with direct_vm.expect_revert("no reviews left"):
+        org.review_delivery(proposal_id, "https://example.org/delivery")
+
+
+def test_undetermined_review_can_recover_to_accepted(warp, direct_vm, direct_deploy, direct_owner):
+    org = build(direct_vm, direct_deploy, direct_owner, treasury=10 * GEN)
+    bootstrap(org, direct_vm)
+    proposal_id = _funded_proposal(org, direct_vm, amount=GEN)
+    direct_vm.mock_web(r"example\.org/delivery", {"status": 200, "body": "inconclusive"})
+    mock_review(direct_vm, "UNDETERMINED", 0, "cannot tell yet")
+    org.review_delivery(proposal_id, "https://example.org/delivery")
+    direct_vm.clear_mocks()
+    direct_vm.mock_web(r"example\.org/delivery", {"status": 200, "body": "Release 1.0 published."})
+    mock_review(direct_vm, "ACCEPTED", 80, "now published")
+    org.review_delivery(proposal_id, "https://example.org/delivery")
+    assert json.loads(org.get_proposal(proposal_id))["delivery_verdict"] == "ACCEPTED"
+    org.settle_delivery(proposal_id)
+    assert json.loads(org.get_proposal(proposal_id))["settled"] is True
+
+
+def test_truncated_evidence_is_logged(warp, direct_vm, direct_deploy, direct_owner):
+    org = build(direct_vm, direct_deploy, direct_owner, treasury=10 * GEN)
+    bootstrap(org, direct_vm)
+    proposal_id = _funded_proposal(org, direct_vm, amount=GEN)
+    direct_vm.mock_web(r"example\.org/delivery", {"status": 200, "body": "x" * 5000})
+    mock_review(direct_vm, "ACCEPTED", 80, "read what was there")
+    org.review_delivery(proposal_id, "https://example.org/delivery")
+    log = [json.loads(entry) for entry in json.loads(org.get_mission_log(0, 200))]
+    reviewed = [entry for entry in log if entry.get("event") == "delivery_reviewed"]
+    assert len(reviewed) == 1
+    assert reviewed[0]["evidence_truncated"] is True
 
 
 # ---------------------------------------------------------------- steward round two
@@ -2049,7 +2223,7 @@ def test_delivery_review_needs_the_committed_url(warp, direct_vm, direct_deploy,
     org.execute_proposal(proposal_id)
     direct_vm.mock_web(r"example\.org/other", {"status": 200, "body": "unrelated"})
     mock_review(direct_vm, "ACCEPTED", 80)
-    with direct_vm.expect_revert("must be the url named in the proposal"):
+    with direct_vm.expect_revert("must be the exact url named in the proposal"):
         org.review_delivery(proposal_id, "https://example.org/other")
 
 
