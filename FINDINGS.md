@@ -1409,6 +1409,17 @@ the storage pin moved with the code.
      instead of blocking settlement forever. Acceptance and rejection stay
      final on the first verdict.
 
-  The member boundary, the exact-URL rule, the fingerprint, the retry bound,
-  the burn vote, the caps, the refund reversal, and the reconciliation shape
-  each have a failing-without-it test. The suite is 146 passing.
+    The member boundary, the exact-URL rule, the fingerprint, the retry bound,
+    the burn vote, the caps, the refund reversal, and the reconciliation shape
+    each have a failing-without-it test. The suite is 147 passing.
+
+    Two live findings while proving it. First, the new truncation instruction
+    backfired on its first deployment: every review came back UNDETERMINED with
+    rationales citing cut-off text, because a 4000-character window into a long
+    article always ends mid-sentence. The instruction now scopes the judgment to
+    what the shown text supports instead of failing open-ended evidence, and the
+    next deployment settled normally. Second, governance proposals were judged
+    as grants: a BURN_PER_CYCLE body carries no URL by construction, so the
+    committee refused it under the grant-shaped rules. The assessment prompt now
+    instructs governance as governance, and the same proposal shape passed on
+    the next attempt.
