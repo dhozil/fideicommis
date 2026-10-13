@@ -1423,3 +1423,25 @@ the storage pin moved with the code.
     committee refused it under the grant-shaped rules. The assessment prompt now
     instructs governance as governance, and the same proposal shape passed on
     the next attempt.
+
+    End-to-end evidence on Nusantara Lestari Trust
+    (`0x9f732c9c87bef27e18AC05F4f600271c2f376e78`), all finalized:
+
+    - Reconciliation: real balance 0.910000 against treasury 0.910000 plus
+      retired 0.000000, holds true — then again after voted burning with
+      retired positive and still holding.
+    - Independent recipient `0x0Eb9431eDdbF170d2224F4f9E47D4DD68b6c44bc`
+      at 1.270000 GEN, with each settled proposal mapping its second tranche
+      to that address. The member governs; someone else gets paid.
+    - Keeper 0.005000 paid per advance with the policy restored to zeros
+      afterwards.
+    - Burn lifecycle, complete: submit `0xa9d0c956…`, assess `0xd9b180c0…`
+      (COMPLIANT under the fixed prompt), vote `0xf422b4fb…`, execute
+      `0x6b151a4c…` after the hour, burn_per_cycle 0.010000. The next two
+      cycles retired 0.008650 and 0.008563 — one percent each, not the voted
+      hundredth — with reconciliation holding throughout.
+    - wind_down and dissolve both refused without a DISSOLVE authorisation;
+      the trust is ACTIVE.
+    - Failed transfers have no live occurrence against EOA recipients, so the
+      refund path is proven in direct mode; the reconciliation reads above
+      would expose any drift it ever missed.
